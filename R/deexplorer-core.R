@@ -82,29 +82,12 @@ function (de_df, x_col, y_col, title, source_id, highlighted_gene_keys = charact
         x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
         "`")), name = "Active gene", marker = list(color = "#0b6e4f", 
         size = 13, symbol = "star"))
-    p <- plotly::layout(p, title = list(text = title), xaxis = list(title = x_title), 
-        yaxis = list(title = y_title), dragmode = "lasso", legend = list(orientation = "h", 
+    p <- plotly::layout(p, title = list(text = title), xaxis = list(title = x_title),
+        yaxis = list(title = y_title), legend = list(orientation = "h",
             y = -0.18))
     p <- plotly::event_register(p, "plotly_click")
     p <- plotly::event_register(p, "plotly_hover")
-    p <- plotly::event_register(p, "plotly_selected")
     p
-}
-build_enrichr_barplot <-
-function (enrichr_df) 
-{
-    shiny::validate(shiny::need(nrow(enrichr_df) > 0L, "Lasso-select genes in the MA or volcano plot, then run Enrichr to show results."))
-    top_hits <- utils::head(enrichr_df[order(enrichr_df$adj_p_value, 
-        -enrichr_df$combined_score), , drop = FALSE], 12L)
-    top_hits$term <- factor(top_hits$term, levels = rev(top_hits$term))
-    plotly::layout(plotly::plot_ly(data = top_hits, x = ~-log10(pmax(adj_p_value, 
-        .Machine$double.xmin)), y = ~term, type = "bar", orientation = "h", 
-        marker = list(color = "#0b6e4f"), text = ~paste0("<b>", 
-            term, "</b><br>", "adj.P: ", format_pvalue(adj_p_value), 
-            "<br>", "Combined score: ", format_number(combined_score), 
-            "<br>", "Genes: ", matched_genes), hoverinfo = "text"), 
-        title = list(text = "Top Enrichr terms"), xaxis = list(title = "-log10(adj.P)"), 
-        yaxis = list(title = ""))
 }
 build_expression_matrices <-
 function (dge, gene_df, prior_count) 
@@ -314,17 +297,15 @@ function (gene_row)
             shiny::strong("t-statistic: "), format_number(gene_row$t)))
 }
 build_selection_summary <-
-function (contrast_label, lasso_gene_count, manual_gene_count, 
-    geneset_name, filtered_row_count) 
+function (contrast_label, manual_gene_count, geneset_name, filtered_row_count)
 {
-    shiny::tagList(shiny::h4("Current selection"), shiny::div(class = "deexplorer-metric", 
-        shiny::strong("Contrast: "), contrast_label), shiny::div(class = "deexplorer-metric", 
-        shiny::strong("Lasso genes: "), lasso_gene_count), shiny::div(class = "deexplorer-metric", 
-        shiny::strong("Manual highlights: "), manual_gene_count), 
-        shiny::div(class = "deexplorer-metric", shiny::strong("MSigDB gene set: "), 
-            geneset_name %||% "None"), shiny::div(class = "deexplorer-metric", 
-            shiny::strong("Rows in table: "), filtered_row_count), 
-        shiny::div(class = "deexplorer-note", "Significance colors use adj.P.Val < 0.05. Lasso selection is exploratory and enrichment depends on the Enrichr library."))
+    shiny::tagList(shiny::h4("Current selection"), shiny::div(class = "deexplorer-metric",
+        shiny::strong("Contrast: "), contrast_label), shiny::div(class = "deexplorer-metric",
+        shiny::strong("Manual highlights: "), manual_gene_count),
+        shiny::div(class = "deexplorer-metric", shiny::strong("MSigDB gene set: "),
+            geneset_name %||% "None"), shiny::div(class = "deexplorer-metric",
+            shiny::strong("Rows in table: "), filtered_row_count),
+        shiny::div(class = "deexplorer-note", "Significance colors use adj.P.Val < 0.05."))
 }
 build_single_de_table <-
 function (fit, fit_name, contrast_name, gene_df, gene_lookup, 
@@ -395,10 +376,9 @@ function (...)
     list(fits = fits, fit_names = fit_names)
 }
 create_deexplorer_bundle <-
-function (dge, ..., msigdb_genesets = NULL, msigdb_path = NULL, 
-    fgsea_dir = NULL, sample_id_col = "Sample", gene_id_col = "ENSEMBL", 
-    gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05, prior_count = 2, 
-    enrichr_databases = default_enrichr_databases()) 
+function (dge, ..., msigdb_genesets = NULL, msigdb_path = NULL,
+    fgsea_dir = NULL, sample_id_col = "Sample", gene_id_col = "ENSEMBL",
+    gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05, prior_count = 2)
 {
     validate_dge_input(dge, sample_id_col = sample_id_col)
     fit_info <- collect_fit_inputs(...)
@@ -425,10 +405,9 @@ function (dge, ..., msigdb_genesets = NULL, msigdb_path = NULL,
         gene_lookup = gene_lookup, pca_scores = pca$scores, pca_variance = pca$variance, 
         de_tables = de_payload$tables, contrast_catalog = de_payload$contrast_catalog, 
         msigdb = msigdb_genesets, msigdb_names = names(msigdb_genesets), 
-        fgsea = fgsea_results, options = list(sample_id_col = sample_id_col, 
-            gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col, 
-            fdr_cutoff = fdr_cutoff, prior_count = prior_count, 
-            enrichr_databases = unique(as.character(enrichr_databases))))
+        fgsea = fgsea_results, options = list(sample_id_col = sample_id_col,
+            gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col,
+            fdr_cutoff = fdr_cutoff, prior_count = prior_count))
     class(bundle) <- "deexplorer_bundle"
     bundle
 }
@@ -458,11 +437,7 @@ function (bundle)
             pca_choices[[2L]]
         else pca_x_default
         pca_size_default <- "None"
-        enrichr_choices <- bundle$options$enrichr_databases
-        if (!length(enrichr_choices)) {
-            enrichr_choices <- default_enrichr_databases()
-        }
-        shiny::updateSelectInput(session, "pca_x_pc", choices = pca_choices, 
+        shiny::updateSelectInput(session, "pca_x_pc", choices = pca_choices,
             selected = pca_x_default)
         shiny::updateSelectInput(session, "pca_y_pc", choices = pca_choices, 
             selected = pca_y_default)
@@ -482,14 +457,10 @@ function (bundle)
             bundle$contrast_catalog$contrast), selected = first_or(bundle$contrast_catalog$contrast_key))
         shiny::updateSelectInput(session, "gene_box_group", choices = sample_metadata_choices, 
             selected = group_default)
-        shiny::updateSelectizeInput(session, "geneset_name", 
+        shiny::updateSelectizeInput(session, "geneset_name",
             choices = bundle$msigdb_names, server = TRUE)
-        shiny::updateSelectInput(session, "enrichr_db", choices = enrichr_choices, 
-            selected = first_or(enrichr_choices))
-        state <- shiny::reactiveValues(active_gene_key = NULL, 
-            hover_gene_key = NULL, 
-            lasso_gene_keys = character(), enrichr_cache = new.env(parent = emptyenv()), 
-            enrichr_result = NULL)
+        state <- shiny::reactiveValues(active_gene_key = NULL,
+            hover_gene_key = NULL)
         current_contrast_row <- shiny::reactive({
             key <- input$contrast_key
             shiny::req(!is.null(key), nzchar(key))
@@ -608,29 +579,11 @@ function (bundle)
                 state$hover_gene_key <- hovered[[1L]]
             }
         }, ignoreNULL = TRUE)
-        shiny::observeEvent(safe_event_data("plotly_selected", source = "ma_plot"), 
-            {
-                state$lasso_gene_keys <- get_plotly_customdata(safe_event_data("plotly_selected", 
-                  source = "ma_plot"))
-            state$enrichr_result <- NULL
-        }, ignoreNULL = TRUE)
-        shiny::observeEvent(safe_event_data("plotly_selected", source = "volcano_plot"), 
-            {
-                state$lasso_gene_keys <- get_plotly_customdata(safe_event_data("plotly_selected", 
-                  source = "volcano_plot"))
-            state$enrichr_result <- NULL
-        }, ignoreNULL = TRUE)
-        shiny::observeEvent(input$reset_lasso, {
-            state$lasso_gene_keys <- character()
-            state$enrichr_result <- NULL
-        })
         shiny::observeEvent(input$reset_manual_genes, {
             shiny::updateTextAreaInput(session, "manual_genes", 
                 value = "")
         })
         shiny::observeEvent(input$contrast_key, {
-            state$lasso_gene_keys <- character()
-            state$enrichr_result <- NULL
             state$hover_gene_key <- NULL
         })
         output$pca_plot <- plotly::renderPlotly({
@@ -661,10 +614,9 @@ function (bundle)
                 return(shiny::tagList(shiny::h4("Current selection"), 
                   shiny::div(class = "deexplorer-note", "Select a contrast to populate DEG exploration panels.")))
             }
-            build_selection_summary(contrast_label = first_or(contrast_row$contrast, 
-                "Unknown contrast"), 
-                lasso_gene_count = length(state$lasso_gene_keys), 
-                manual_gene_count = length(manual_gene_keys()), 
+            build_selection_summary(contrast_label = first_or(contrast_row$contrast,
+                "Unknown contrast"),
+                manual_gene_count = length(manual_gene_keys()),
                 geneset_name = if (nzchar(input$geneset_name %||% 
                   "")) 
                   input$geneset_name
@@ -766,52 +718,6 @@ function (bundle)
             build_gene_boxplot(gene_expr_df, gene_row$display_symbol[[1L]], 
                 input$gene_box_group)
         })
-        shiny::observeEvent(input$run_enrichr, {
-            contrast_row <- current_contrast_row()
-            shiny::req(nrow(contrast_row) > 0L)
-            selected_symbols <- resolve_gene_symbols(state$lasso_gene_keys, 
-                bundle$gene_df)
-            cache_key <- paste(first_or(contrast_row$contrast_key, "contrast"), 
-                input$enrichr_db, paste(sort(selected_symbols), 
-                  collapse = "|"), sep = "::")
-            if (exists(cache_key, envir = state$enrichr_cache, 
-                inherits = FALSE)) {
-                state$enrichr_result <- get(cache_key, envir = state$enrichr_cache, 
-                  inherits = FALSE)
-                return(invisible(NULL))
-            }
-            result <- tryCatch({
-                shiny::withProgress(message = "Submitting genes to Enrichr", 
-                  value = 0.2, {
-                    shiny::incProgress(0.35, detail = "Calling Enrichr")
-                    enrichr_result <- run_enrichr_query(selected_symbols, 
-                      input$enrichr_db)
-                    shiny::incProgress(0.45, detail = "Caching result")
-                    assign(cache_key, enrichr_result, envir = state$enrichr_cache)
-                    enrichr_result
-                  })
-            }, error = function(error) {
-                shiny::showNotification(conditionMessage(error), 
-                  type = "error", duration = 8)
-                NULL
-            })
-            state$enrichr_result <- result
-        })
-        output$enrichr_plot <- plotly::renderPlotly({
-            build_enrichr_barplot(state$enrichr_result %||% data.frame())
-        })
-        output$enrichr_table <- DT::renderDT({
-            enrichr_df <- state$enrichr_result %||% data.frame()
-            shiny::validate(shiny::need(nrow(enrichr_df) > 0L, 
-                "No Enrichr result is available for the current lasso selection."))
-            DT::formatRound(DT::formatSignif(DT::datatable(enrichr_df[, 
-                c("term", "adj_p_value", "p_value", "combined_score", 
-                  "matched_genes", "database")], rownames = FALSE, 
-                filter = "top", options = list(pageLength = 10, 
-                  scrollX = TRUE)), columns = c("adj_p_value", 
-                "p_value"), digits = 3), columns = "combined_score", 
-                digits = 3)
-        })
     }
 }
 deexplorer_styles <-
@@ -846,43 +752,31 @@ function (title = "DEExplorer")
         shiny::div(class = "deexplorer-note", "This app assumes the supplied DGEList has already been filtered to the analysis universe and that limma fits were computed on the same genes."), 
         shiny::tabsetPanel(id = "main_tabs", pca_tab_ui(), deg_tab_ui()))
 }
-default_enrichr_databases <-
-function () 
-{
-    c("GO_Biological_Process_2023", "MSigDB_Hallmark_2020", "KEGG_2021_Human")
-}
 deg_tab_ui <-
-function () 
+function ()
 {
-    shiny::tabPanel(title = "Explore DEG results", shiny::fluidRow(shiny::column(width = 3, 
-        shiny::div(class = "deexplorer-sidebar", shiny::h4("Contrast and Highlighting"), 
-            shiny::selectInput("contrast_key", "Contrast", choices = character()), 
-            shiny::selectInput("gene_box_group", "Group selected-gene boxplot by", 
-                choices = character()), shiny::selectizeInput("geneset_name", 
-                "MSigDB gene set", choices = NULL, selected = "", 
-                options = list(placeholder = "Start typing a hallmark, GO term, or pathway")), 
-            shiny::textAreaInput("manual_genes", "Highlight genes (one per line)", 
-                rows = 8, placeholder = "STAT1\nCXCL8\nTFRC"), 
-            shiny::fluidRow(shiny::column(width = 6, shiny::actionButton("reset_lasso", 
-                "Clear lasso")), shiny::column(width = 6, shiny::actionButton("reset_manual_genes", 
-                "Clear gene list"))), shiny::hr(), shiny::h4("Enrichr"), 
-            shiny::selectInput("enrichr_db", "Database", choices = default_enrichr_databases()), 
-            shiny::actionButton("run_enrichr", "Run Enrichr on lasso selection (>=30 genes)"), 
-            shiny::hr(), shiny::uiOutput("selection_summary"), 
-            shiny::uiOutput("fgsea_summary"))), shiny::column(width = 9, 
-        shiny::fluidRow(shiny::column(width = 6, shiny::div(class = "deexplorer-card", 
-            plotly::plotlyOutput("ma_plot", height = "410px"))), 
-            shiny::column(width = 6, shiny::div(class = "deexplorer-card", 
-                plotly::plotlyOutput("volcano_plot", height = "410px")))), 
-        shiny::fluidRow(shiny::column(width = 7, shiny::div(class = "deexplorer-card", 
-            shiny::h4("Ranked Differential Expression Table"), 
-            DT::DTOutput("de_table"))), shiny::column(width = 5, 
-            shiny::div(class = "deexplorer-card", shiny::uiOutput("selected_gene_summary")), 
-            shiny::div(class = "deexplorer-card", plotly::plotlyOutput("gene_boxplot", 
-                height = "310px")))), shiny::fluidRow(shiny::column(width = 4, 
-            shiny::div(class = "deexplorer-card", plotly::plotlyOutput("enrichr_plot", 
-                height = "320px"))), shiny::column(width = 8, 
-            shiny::div(class = "deexplorer-card", DT::DTOutput("enrichr_table")))))))
+    shiny::tabPanel(title = "Explore DEG results", shiny::fluidRow(shiny::column(width = 3,
+        shiny::div(class = "deexplorer-sidebar", shiny::h4("Contrast and Highlighting"),
+            shiny::selectInput("contrast_key", "Contrast", choices = character()),
+            shiny::selectInput("gene_box_group", "Group selected-gene boxplot by",
+                choices = character()), shiny::selectizeInput("geneset_name",
+                "MSigDB gene set", choices = NULL, selected = "",
+                options = list(placeholder = "Start typing a hallmark, GO term, or pathway")),
+            shiny::textAreaInput("manual_genes", "Highlight genes (one per line)",
+                rows = 8, placeholder = "STAT1\nCXCL8\nTFRC"),
+            shiny::actionButton("reset_manual_genes", "Clear gene list"),
+            shiny::hr(), shiny::uiOutput("selection_summary"),
+            shiny::uiOutput("fgsea_summary"))), shiny::column(width = 9,
+        shiny::fluidRow(shiny::column(width = 6, shiny::div(class = "deexplorer-card",
+            plotly::plotlyOutput("ma_plot", height = "410px"))),
+            shiny::column(width = 6, shiny::div(class = "deexplorer-card",
+                plotly::plotlyOutput("volcano_plot", height = "410px")))),
+        shiny::fluidRow(shiny::column(width = 7, shiny::div(class = "deexplorer-card",
+            shiny::h4("Ranked Differential Expression Table"),
+            DT::DTOutput("de_table"))), shiny::column(width = 5,
+            shiny::div(class = "deexplorer-card", shiny::uiOutput("selected_gene_summary")),
+            shiny::div(class = "deexplorer-card", plotly::plotlyOutput("gene_boxplot",
+                height = "310px")))))))
 }
 download_matrix_with_annotations <-
 function (matrix_data, gene_df, path) 
@@ -1011,36 +905,6 @@ function (file_stub, contrast_names)
         return(NA)
     }
     matches[[which.max(nchar(matches))]]
-}
-parse_enrichr_rows <-
-function (response_rows) 
-{
-    if (!length(response_rows)) {
-        return(data.frame())
-    }
-    parsed_rows <- lapply(response_rows, function(row) {
-        if (is.list(row) && !is.null(names(row))) {
-            data.frame(term = as.character(row[["term"]] %||% 
-                row[["Term"]] %||% row[[2L]]), p_value = as.numeric(row[["pvalue"]] %||% 
-                row[["P.value"]] %||% row[[3L]]), z_score = as.numeric(row[["zscore"]] %||% 
-                row[["Z.score"]] %||% row[[4L]]), combined_score = as.numeric(row[["combinedScore"]] %||% 
-                row[["Combined.Score"]] %||% row[[5L]]), matched_genes = paste(row[["Genes"]] %||% 
-                row[["genes"]] %||% row[[6L]], collapse = ", "), 
-                adj_p_value = as.numeric(row[["Adjusted.P.value"]] %||% 
-                  row[["adjusted_p_value"]] %||% row[[7L]]), 
-                stringsAsFactors = FALSE)
-        }
-        else {
-            row <- as.list(row)
-            data.frame(term = as.character(row[[2L]] %||% NA), 
-                p_value = as.numeric(row[[3L]] %||% NA), z_score = as.numeric(row[[4L]] %||% 
-                  NA), combined_score = as.numeric(row[[5L]] %||% 
-                  NA), matched_genes = gsub(";", ", ", as.character(row[[6L]] %||% 
-                  NA)), adj_p_value = as.numeric(row[[7L]] %||% 
-                  NA), stringsAsFactors = FALSE)
-        }
-    })
-    do.call(rbind, parsed_rows)
 }
 parse_fgsea_leading_edge <-
 function (x) 
@@ -1183,61 +1047,18 @@ function (identifiers, gene_lookup)
     }
     unique(resolved[nzchar(resolved)])
 }
-resolve_gene_symbols <-
-function (gene_keys, gene_df) 
-{
-    gene_keys <- intersect(unique(gene_keys), gene_df$gene_key)
-    if (!length(gene_keys)) {
-        return(character())
-    }
-    symbols <- gene_df[gene_keys, "symbol"]
-    symbols <- as.character(symbols)
-    symbols[!is_missing_string(symbols)]
-}
 run_deexplorer_app <-
-function (dge, ..., title = "DEExplorer", msigdb_genesets = NULL, 
-    msigdb_path = NULL, fgsea_dir = NULL, sample_id_col = "Sample", 
-    gene_id_col = "ENSEMBL", gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05, 
-    prior_count = 2, enrichr_databases = default_enrichr_databases(), 
-    launch.browser = interactive()) 
+function (dge, ..., title = "DEExplorer", msigdb_genesets = NULL,
+    msigdb_path = NULL, fgsea_dir = NULL, sample_id_col = "Sample",
+    gene_id_col = "ENSEMBL", gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05,
+    prior_count = 2, launch.browser = interactive())
 {
-    bundle <- create_deexplorer_bundle(dge = dge, ..., msigdb_genesets = msigdb_genesets, 
-        msigdb_path = msigdb_path, fgsea_dir = fgsea_dir, sample_id_col = sample_id_col, 
-        gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col, 
-        fdr_cutoff = fdr_cutoff, prior_count = prior_count, enrichr_databases = enrichr_databases)
+    bundle <- create_deexplorer_bundle(dge = dge, ..., msigdb_genesets = msigdb_genesets,
+        msigdb_path = msigdb_path, fgsea_dir = fgsea_dir, sample_id_col = sample_id_col,
+        gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col,
+        fdr_cutoff = fdr_cutoff, prior_count = prior_count)
     shiny::shinyApp(ui = deexplorer_ui(title = title), server = deexplorer_server(bundle), 
         options = list(launch.browser = launch.browser))
-}
-run_enrichr_query <-
-function (genes, database, base_url = "https://maayanlab.cloud/Enrichr") 
-{
-    genes <- unique(trimws(as.character(genes)))
-    genes <- genes[nzchar(genes)]
-    if (length(genes) < 30L) {
-        stop("Select at least 30 genes before running Enrichr.", 
-            call. = FALSE)
-    }
-    if (length(genes) > 500L) {
-        stop("Select at most 500 genes before running Enrichr.", 
-            call. = FALSE)
-    }
-    add_response <- httr2::req_perform(httr2::req_body_form(httr2::req_url_path_append(httr2::request(base_url), 
-        "addList"), list = paste(genes, collapse = "\n"), description = paste0("DEExplorer_", 
-        format(Sys.time(), "%Y%m%d_%H%M%S"))))
-    add_payload <- httr2::resp_body_json(add_response)
-    user_list_id <- add_payload$userListId %||% add_payload[["userListId"]]
-    if (is.null(user_list_id)) {
-        stop("Enrichr did not return a userListId.", call. = FALSE)
-    }
-    enrich_response <- httr2::req_perform(httr2::req_url_query(httr2::req_url_path_append(httr2::request(base_url), 
-        "enrich"), userListId = user_list_id, backgroundType = database))
-    enrich_payload <- httr2::resp_body_json(enrich_response, 
-        simplifyVector = FALSE)
-    result_rows <- enrich_payload[[database]] %||% enrich_payload[[1L]] %||% 
-        list()
-    enrich_df <- parse_enrichr_rows(result_rows)
-    enrich_df$database <- database
-    enrich_df
 }
 scale_marker_color <-
 function (values) 
@@ -1424,11 +1245,11 @@ function (app_dir, title)
     writeLines(server_lines, con = file.path(app_dir, "server.R"))
 }
 write_deexplorer_app <-
-function (dge, ..., app_dir = "inst/shiny/deexplorer", title = "DEExplorer", 
-    overwrite = FALSE, launch = FALSE, msigdb_genesets = NULL, 
-    msigdb_path = NULL, fgsea_dir = NULL, sample_id_col = "Sample", 
-    gene_id_col = "ENSEMBL", gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05, 
-    prior_count = 2, enrichr_databases = default_enrichr_databases()) 
+function (dge, ..., app_dir = "inst/shiny/deexplorer", title = "DEExplorer",
+    overwrite = FALSE, launch = FALSE, msigdb_genesets = NULL,
+    msigdb_path = NULL, fgsea_dir = NULL, sample_id_col = "Sample",
+    gene_id_col = "ENSEMBL", gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05,
+    prior_count = 2)
 {
     app_dir <- normalizePath(app_dir, winslash = "/", mustWork = FALSE)
     dir.create(app_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1442,7 +1263,7 @@ function (dge, ..., app_dir = "inst/shiny/deexplorer", title = "DEExplorer",
     bundle <- create_deexplorer_bundle(dge = dge, ..., msigdb_genesets = msigdb_genesets, 
         msigdb_path = msigdb_path, fgsea_dir = fgsea_dir, sample_id_col = sample_id_col, 
         gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col, 
-        fdr_cutoff = fdr_cutoff, prior_count = prior_count, enrichr_databases = enrichr_databases)
+        fdr_cutoff = fdr_cutoff, prior_count = prior_count)
     saveRDS(bundle, file = file.path(app_dir, "app-data.rds"))
     write_app_wrapper_files(app_dir = app_dir, title = title)
     if (isTRUE(launch)) {

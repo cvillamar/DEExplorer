@@ -7,7 +7,7 @@ Authors@R:
 Description: Package-oriented Shiny components to explore edgeR DGEList
     objects together with limma differential expression fits produced by
     eBayes() or treat(). Includes PCA/QC views, linked MA and volcano
-    exploration, contrast-aware DEG tables, and lasso-driven Enrichr workflows.
+    exploration, and contrast-aware DEG tables.
 License: GPL-3
 Encoding: UTF-8
 Depends: R (>= 4.2.0)
@@ -15,7 +15,6 @@ Imports:
     bslib,
     DT,
     edgeR,
-    httr2,
     limma,
     plotly,
     shiny

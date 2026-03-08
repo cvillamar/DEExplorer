@@ -153,7 +153,6 @@ normalize_gsea_input <- function(in_gsea) {
 #' @param gene_symbol_col Gene symbol column in `dge$genes`.
 #' @param fdr_cutoff Significance threshold for DE coloring.
 #' @param prior_count Prior count for log-CPM.
-#' @param enrichr_databases Enrichr database names offered in the UI.
 #'
 #' @return Invisible list with generated file paths.
 deexplorer <- function(
@@ -168,8 +167,7 @@ deexplorer <- function(
   gene_id_col = "ENSEMBL",
   gene_symbol_col = "SYMBOL",
   fdr_cutoff = 0.05,
-  prior_count = 2,
-  enrichr_databases = default_enrichr_databases()
+  prior_count = 2
 ) {
   fits <- normalize_marralm_input(in_marralm = in_marralm, arg_expr = substitute(in_marralm))
   gsea <- normalize_gsea_input(in_gsea)
@@ -190,8 +188,7 @@ deexplorer <- function(
       gene_id_col = gene_id_col,
       gene_symbol_col = gene_symbol_col,
       fdr_cutoff = fdr_cutoff,
-      prior_count = prior_count,
-      enrichr_databases = enrichr_databases
+      prior_count = prior_count
     ),
     fits$fits
   )
