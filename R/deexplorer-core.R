@@ -85,6 +85,7 @@ function (de_df, x_col, y_col, title, source_id, highlighted_gene_keys = charact
     p <- plotly::layout(p, title = list(text = title), xaxis = list(title = x_title), 
         yaxis = list(title = y_title), dragmode = "lasso", legend = list(orientation = "h", 
             y = -0.18))
+    p <- plotly::event_register(p, "plotly_click")
     p <- plotly::event_register(p, "plotly_hover")
     p <- plotly::event_register(p, "plotly_selected")
     p
@@ -478,7 +479,7 @@ function (bundle)
         shiny::updateSelectInput(session, "pca_size", choices = c("None", 
             sample_metadata_choices), selected = pca_size_default)
         shiny::updateSelectInput(session, "contrast_key", choices = stats::setNames(bundle$contrast_catalog$contrast_key, 
-            bundle$contrast_catalog$display_label), selected = first_or(bundle$contrast_catalog$contrast_key))
+            bundle$contrast_catalog$contrast), selected = first_or(bundle$contrast_catalog$contrast_key))
         shiny::updateSelectInput(session, "gene_box_group", choices = sample_metadata_choices, 
             selected = group_default)
         shiny::updateSelectizeInput(session, "geneset_name", 
@@ -486,6 +487,7 @@ function (bundle)
         shiny::updateSelectInput(session, "enrichr_db", choices = enrichr_choices, 
             selected = first_or(enrichr_choices))
         state <- shiny::reactiveValues(active_gene_key = NULL, 
+            hover_gene_key = NULL, 
             lasso_gene_keys = character(), enrichr_cache = new.env(parent = emptyenv()), 
             enrichr_result = NULL)
         current_contrast_row <- shiny::reactive({
@@ -545,6 +547,7 @@ function (bundle)
             de_df <- filtered_table()
             if (!nrow(de_df)) {
                 state$active_gene_key <- NULL
+                state$hover_gene_key <- NULL
                 return(invisible(NULL))
             }
             if (is.null(state$active_gene_key) || !state$active_gene_key %in% 
@@ -562,20 +565,39 @@ function (bundle)
             selected_index <- selected_rows[[1L]]
             if (length(selected_index) && selected_index <= nrow(de_df)) {
                 state$active_gene_key <- de_df$gene_key[[selected_index]]
+                state$hover_gene_key <- state$active_gene_key
             }
             invisible(NULL)
         }, ignoreNULL = TRUE)
         shiny::observeEvent(input$de_table_hover, {
             if (input$de_table_hover %in% bundle$gene_df$gene_key) {
-                state$active_gene_key <- input$de_table_hover
+                state$hover_gene_key <- input$de_table_hover
             }
+        }, ignoreNULL = TRUE)
+        shiny::observeEvent(safe_event_data("plotly_click", source = "ma_plot"), 
+            {
+                clicked <- get_plotly_customdata(safe_event_data("plotly_click", 
+                  source = "ma_plot"))
+                if (length(clicked)) {
+                  state$active_gene_key <- clicked[[1L]]
+                  state$hover_gene_key <- clicked[[1L]]
+                }
+        }, ignoreNULL = TRUE)
+        shiny::observeEvent(safe_event_data("plotly_click", source = "volcano_plot"), 
+            {
+                clicked <- get_plotly_customdata(safe_event_data("plotly_click", 
+                  source = "volcano_plot"))
+                if (length(clicked)) {
+                  state$active_gene_key <- clicked[[1L]]
+                  state$hover_gene_key <- clicked[[1L]]
+                }
         }, ignoreNULL = TRUE)
         shiny::observeEvent(safe_event_data("plotly_hover", source = "ma_plot"), 
             {
                 hovered <- get_plotly_customdata(safe_event_data("plotly_hover", 
                   source = "ma_plot"))
             if (length(hovered)) {
-                state$active_gene_key <- hovered[[1L]]
+                state$hover_gene_key <- hovered[[1L]]
             }
         }, ignoreNULL = TRUE)
         shiny::observeEvent(safe_event_data("plotly_hover", source = "volcano_plot"), 
@@ -583,7 +605,7 @@ function (bundle)
                 hovered <- get_plotly_customdata(safe_event_data("plotly_hover", 
                   source = "volcano_plot"))
             if (length(hovered)) {
-                state$active_gene_key <- hovered[[1L]]
+                state$hover_gene_key <- hovered[[1L]]
             }
         }, ignoreNULL = TRUE)
         shiny::observeEvent(safe_event_data("plotly_selected", source = "ma_plot"), 
@@ -609,6 +631,7 @@ function (bundle)
         shiny::observeEvent(input$contrast_key, {
             state$lasso_gene_keys <- character()
             state$enrichr_result <- NULL
+            state$hover_gene_key <- NULL
         })
         output$pca_plot <- plotly::renderPlotly({
             build_pca_plot(bundle = bundle, x_pc = input$pca_x_pc, 
@@ -638,8 +661,8 @@ function (bundle)
                 return(shiny::tagList(shiny::h4("Current selection"), 
                   shiny::div(class = "deexplorer-note", "Select a contrast to populate DEG exploration panels.")))
             }
-            build_selection_summary(contrast_label = first_or(contrast_row$display_label, 
-                first_or(contrast_row$contrast, "Unknown contrast")), 
+            build_selection_summary(contrast_label = first_or(contrast_row$contrast, 
+                "Unknown contrast"), 
                 lasso_gene_count = length(state$lasso_gene_keys), 
                 manual_gene_count = length(manual_gene_keys()), 
                 geneset_name = if (nzchar(input$geneset_name %||% 
@@ -680,7 +703,7 @@ function (bundle)
                 "Select a valid contrast to draw the MA plot."))
             plotly::layout(build_de_plot(de_df = de_df, x_col = "AveExpr", 
                 y_col = "logFC", title = paste0("MA plot: ", 
-                  first_or(contrast_row$display_label, "Unknown contrast")), source_id = "ma_plot", 
+                  first_or(contrast_row$contrast, "Unknown contrast")), source_id = "ma_plot", 
                 highlighted_gene_keys = selected_geneset_keys(), 
                 manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(), 
                 active_gene_key = state$active_gene_key, x_title = "AveExpr", 
@@ -697,7 +720,7 @@ function (bundle)
                 "Select a valid contrast to draw the volcano plot."))
             plotly::layout(build_de_plot(de_df = de_df, x_col = "logFC", 
                 y_col = "neg_log10_p", title = paste0("Volcano plot: ", 
-                  first_or(contrast_row$display_label, "Unknown contrast")), source_id = "volcano_plot", 
+                  first_or(contrast_row$contrast, "Unknown contrast")), source_id = "volcano_plot", 
                 highlighted_gene_keys = selected_geneset_keys(), 
                 manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(), 
                 active_gene_key = state$active_gene_key, x_title = "logFC", 
@@ -715,11 +738,27 @@ function (bundle)
             de_df[de_df$gene_key == state$active_gene_key, , 
                 drop = FALSE]
         })
+        focused_gene_row <- shiny::reactive({
+            de_df <- current_de_table()
+            if (!nrow(de_df)) {
+                return(data.frame())
+            }
+            focus_key <- state$hover_gene_key
+            if (is.null(focus_key) || !length(focus_key) || !focus_key %in% 
+                de_df$gene_key) {
+                focus_key <- state$active_gene_key
+            }
+            if (is.null(focus_key) || !length(focus_key) || !focus_key %in% 
+                de_df$gene_key) {
+                return(data.frame())
+            }
+            de_df[de_df$gene_key == focus_key, , drop = FALSE]
+        })
         output$selected_gene_summary <- shiny::renderUI({
-            build_selected_gene_summary(active_gene_row())
+            build_selected_gene_summary(focused_gene_row())
         })
         output$gene_boxplot <- plotly::renderPlotly({
-            gene_row <- active_gene_row()
+            gene_row <- focused_gene_row()
             shiny::validate(shiny::need(nrow(gene_row) == 1L, 
                 "Hover or select a gene to show the per-sample log-CPM distribution."))
             gene_expr_df <- prepare_gene_expression_df(bundle, 

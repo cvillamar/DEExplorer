@@ -1,7 +1,7 @@
 Package: DEExplorer
 Type: Package
 Title: Interactive Exploration of Bulk RNA-seq Differential Expression Results
-Version: 0.1.5
+Version: 0.1.6
 Authors@R:
     person("DEExplorer", "Team", email = "team@example.com", role = c("aut", "cre"))
 Description: Package-oriented Shiny components to explore edgeR DGEList
