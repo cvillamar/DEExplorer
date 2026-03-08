@@ -248,21 +248,36 @@ function (bundle, x_pc, y_pc, color_col = NULL, shape_col = NULL,
     else rep(14, nrow(pca_df))
     plotly::layout(plotly::add_markers(plotly::plot_ly(data = pca_df, 
         x = pca_df[[x_pc]], y = pca_df[[y_pc]], type = "scatter", 
-        mode = "markers", text = pca_df$hover_text, hoverinfo = "text", 
-        source = "pca_plot"), marker = list(color = scale_marker_color(color_values), 
+        mode = "markers+text", text = pca_df$sample_id, textposition = "top center", 
+        textfont = list(size = 9, color = "#2f3e46"), hovertext = pca_df$hover_text, 
+        hoverinfo = "text", source = "pca_plot"), marker = list(color = scale_marker_color(color_values), 
         size = scale_marker_size(size_values), symbol = scale_marker_symbol(shape_values), 
-        opacity = 0.88, line = list(color = "#ffffff", width = 1))), 
+        opacity = 0.88, line = list(color = "#ffffff", width = 1), 
+        sizemode = "diameter")), 
         title = list(text = paste0("Sample PCA: ", x_pc, " vs ", 
             y_pc)), xaxis = list(title = x_pc), yaxis = list(title = y_pc), 
-        dragmode = "select")
+        dragmode = "select", showlegend = FALSE)
 }
 build_pca_variance_plot <-
 function (bundle) 
 {
     variance_df <- bundle$pca_variance
+    pc_order <- suppressWarnings(as.integer(sub("^PC", "", variance_df$pc)))
+    if (all(is.na(pc_order))) {
+        variance_df <- utils::head(variance_df, 8L)
+    }
+    else {
+        variance_df$pc_order <- pc_order
+        variance_df <- variance_df[order(variance_df$pc_order), , 
+            drop = FALSE]
+        variance_df <- utils::head(variance_df, 8L)
+    }
+    variance_df$pc <- factor(variance_df$pc, levels = variance_df$pc, 
+        ordered = TRUE)
     plotly::layout(plotly::plot_ly(data = variance_df, x = ~pc, 
         y = ~variance_explained * 100, type = "bar", marker = list(color = "#7a4f01")), 
-        title = list(text = "Variance explained"), xaxis = list(title = ""), 
+        title = list(text = "Variance explained"), xaxis = list(title = "", 
+            categoryorder = "array", categoryarray = as.character(variance_df$pc)), 
         yaxis = list(title = "% variance explained"))
 }
 build_sample_annotation <-
@@ -768,6 +783,12 @@ function ()
     shiny::tags$style(shiny::HTML(paste(".deexplorer-title { letter-spacing: 0.02em; }", 
         ".deexplorer-sidebar { background: rgba(255, 255, 255, 0.78); border: 1px solid rgba(31, 41, 51, 0.10); border-radius: 12px; padding: 16px; }", 
         ".deexplorer-card { background: rgba(255, 255, 255, 0.92); border: 1px solid rgba(31, 41, 51, 0.10); border-radius: 12px; padding: 12px; margin-bottom: 16px; box-shadow: 0 12px 28px rgba(31, 41, 51, 0.06); }", 
+        ".deexplorer-pca-sidebar .form-group { margin-bottom: 8px; }", 
+        ".deexplorer-pca-sidebar .control-label { margin-bottom: 2px; font-size: 0.92rem; }", 
+        ".deexplorer-pca-sidebar .form-control { height: 32px; padding: 4px 10px; font-size: 0.92rem; }", 
+        ".deexplorer-pca-sidebar hr { margin-top: 10px; margin-bottom: 10px; }", 
+        ".deexplorer-download-stack .btn { width: 100%; margin-bottom: 8px; }", 
+        ".deexplorer-download-stack .btn:last-child { margin-bottom: 0; }", 
         ".deexplorer-note { font-size: 0.92rem; color: #4a5568; }", 
         ".deexplorer-metric { margin-bottom: 10px; }", ".tab-content { padding-top: 14px; }", 
         ".dataTables_wrapper .dataTables_filter input { width: 240px; }", 
@@ -1004,24 +1025,25 @@ pca_tab_ui <-
 function () 
 {
     shiny::tabPanel(title = "PCA", shiny::fluidRow(shiny::column(width = 3, 
-        shiny::div(class = "deexplorer-sidebar", shiny::h4("Sample Embedding"), 
-            shiny::selectInput("pca_x_pc", "X-axis PC", choices = character()), 
-            shiny::selectInput("pca_y_pc", "Y-axis PC", choices = character()), 
-            shiny::selectInput("pca_color", "Color by metadata", 
-                choices = "None"), shiny::selectInput("pca_shape", 
+        shiny::div(class = "deexplorer-sidebar deexplorer-pca-sidebar", 
+            shiny::h4("Sample Embedding"), shiny::selectInput("pca_x_pc", 
+                "X-axis PC", choices = character()), shiny::selectInput("pca_y_pc", 
+                "Y-axis PC", choices = character()), shiny::selectInput("pca_color", 
+                "Color by metadata", choices = "None"), shiny::selectInput("pca_shape", 
                 "Shape by metadata", choices = "None"), shiny::selectInput("pca_size", 
                 "Size by metadata", choices = "None"), shiny::hr(), 
-            shiny::downloadButton("download_counts", "Download raw counts"), 
-            shiny::br(), shiny::br(), shiny::downloadButton("download_cpm", 
-                "Download CPM"), shiny::br(), shiny::br(), shiny::downloadButton("download_lcpm", 
-                "Download log-CPM"), shiny::hr(), shiny::div(class = "deexplorer-note", 
+            shiny::div(class = "deexplorer-download-stack", shiny::downloadButton("download_counts", 
+                "Download raw counts"), shiny::downloadButton("download_cpm", 
+                "Download CPM"), shiny::downloadButton("download_lcpm", 
+                "Download log-CPM")), shiny::hr(), shiny::div(class = "deexplorer-note", 
                 "Hover tooltips include all columns available in `dge$samples`."))), 
-        shiny::column(width = 6, shiny::div(class = "deexplorer-card", 
-            plotly::plotlyOutput("pca_plot", height = "540px"))), 
-        shiny::column(width = 3, shiny::div(class = "deexplorer-card", 
-            plotly::plotlyOutput("pca_variance_plot", height = "540px")))), 
-        shiny::fluidRow(shiny::column(width = 12, shiny::div(class = "deexplorer-card", 
-            shiny::h4("Sample Metadata"), DT::DTOutput("sample_table")))))
+        shiny::column(width = 9, shiny::fluidRow(shiny::column(width = 8, 
+            shiny::div(class = "deexplorer-card", plotly::plotlyOutput("pca_plot", 
+                height = "430px"))), shiny::column(width = 4, 
+            shiny::div(class = "deexplorer-card", plotly::plotlyOutput("pca_variance_plot", 
+                height = "430px")))), shiny::fluidRow(shiny::column(width = 12, 
+            shiny::div(class = "deexplorer-card", shiny::h4("Sample Metadata"), 
+                DT::DTOutput("sample_table")))))))
 }
 prepare_gene_expression_df <-
 function (bundle, gene_key, group_col) 
