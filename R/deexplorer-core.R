@@ -476,12 +476,19 @@ function (bundle)
             lasso_gene_keys = character(), enrichr_cache = new.env(parent = emptyenv()), 
             enrichr_result = NULL)
         current_contrast_row <- shiny::reactive({
-            shiny::req(input$contrast_key)
-            bundle$contrast_catalog[input$contrast_key, , drop = FALSE]
+            key <- input$contrast_key
+            shiny::req(!is.null(key), nzchar(key))
+            bundle$contrast_catalog[bundle$contrast_catalog$contrast_key %in% 
+                key, , drop = FALSE]
         })
         current_de_table <- shiny::reactive({
-            shiny::req(input$contrast_key)
-            bundle$de_tables[[input$contrast_key]]
+            key <- input$contrast_key
+            shiny::req(!is.null(key), nzchar(key))
+            de_df <- bundle$de_tables[[key]]
+            if (is.null(de_df)) {
+                return(data.frame())
+            }
+            de_df
         })
         manual_gene_keys <- shiny::reactive({
             resolve_gene_keys(identifiers = parse_multiline_gene_input(input$manual_genes), 
@@ -500,7 +507,7 @@ function (bundle)
             if (!nrow(current_contrast)) {
                 return(data.frame())
             }
-            resolve_fgsea_hit(bundle = bundle, contrast_name = current_contrast$contrast[[1L]], 
+            resolve_fgsea_hit(bundle = bundle, contrast_name = first_or(current_contrast$contrast), 
                 geneset_name = input$geneset_name)
         })
         leading_edge_keys <- shiny::reactive({
@@ -544,40 +551,40 @@ function (bundle)
                 state$active_gene_key <- de_df$gene_key[[selected_index]]
             }
             invisible(NULL)
-        })
+        }, ignoreNULL = TRUE)
         shiny::observeEvent(input$de_table_hover, {
             if (input$de_table_hover %in% bundle$gene_df$gene_key) {
                 state$active_gene_key <- input$de_table_hover
             }
-        })
-        shiny::observeEvent(plotly::event_data("plotly_hover", 
-            source = "ma_plot"), {
-            hovered <- get_plotly_customdata(plotly::event_data("plotly_hover", 
-                source = "ma_plot"))
+        }, ignoreNULL = TRUE)
+        shiny::observeEvent(safe_event_data("plotly_hover", source = "ma_plot"), 
+            {
+                hovered <- get_plotly_customdata(safe_event_data("plotly_hover", 
+                  source = "ma_plot"))
             if (length(hovered)) {
                 state$active_gene_key <- hovered[[1L]]
             }
-        })
-        shiny::observeEvent(plotly::event_data("plotly_hover", 
-            source = "volcano_plot"), {
-            hovered <- get_plotly_customdata(plotly::event_data("plotly_hover", 
-                source = "volcano_plot"))
+        }, ignoreNULL = TRUE)
+        shiny::observeEvent(safe_event_data("plotly_hover", source = "volcano_plot"), 
+            {
+                hovered <- get_plotly_customdata(safe_event_data("plotly_hover", 
+                  source = "volcano_plot"))
             if (length(hovered)) {
                 state$active_gene_key <- hovered[[1L]]
             }
-        })
-        shiny::observeEvent(plotly::event_data("plotly_selected", 
-            source = "ma_plot"), {
-            state$lasso_gene_keys <- get_plotly_customdata(plotly::event_data("plotly_selected", 
-                source = "ma_plot"))
+        }, ignoreNULL = TRUE)
+        shiny::observeEvent(safe_event_data("plotly_selected", source = "ma_plot"), 
+            {
+                state$lasso_gene_keys <- get_plotly_customdata(safe_event_data("plotly_selected", 
+                  source = "ma_plot"))
             state$enrichr_result <- NULL
-        })
-        shiny::observeEvent(plotly::event_data("plotly_selected", 
-            source = "volcano_plot"), {
-            state$lasso_gene_keys <- get_plotly_customdata(plotly::event_data("plotly_selected", 
-                source = "volcano_plot"))
+        }, ignoreNULL = TRUE)
+        shiny::observeEvent(safe_event_data("plotly_selected", source = "volcano_plot"), 
+            {
+                state$lasso_gene_keys <- get_plotly_customdata(safe_event_data("plotly_selected", 
+                  source = "volcano_plot"))
             state$enrichr_result <- NULL
-        })
+        }, ignoreNULL = TRUE)
         shiny::observeEvent(input$reset_lasso, {
             state$lasso_gene_keys <- character()
             state$enrichr_result <- NULL
@@ -614,6 +621,10 @@ function (bundle)
             bundle$gene_df, path))
         output$selection_summary <- shiny::renderUI({
             contrast_row <- current_contrast_row()
+            if (!nrow(contrast_row)) {
+                return(shiny::tagList(shiny::h4("Current selection"), 
+                  shiny::div(class = "deexplorer-note", "Select a contrast to populate DEG exploration panels.")))
+            }
             build_selection_summary(contrast_label = contrast_row$display_label[[1L]], 
                 lasso_gene_count = length(state$lasso_gene_keys), 
                 manual_gene_count = length(manual_gene_keys()), 
@@ -651,9 +662,11 @@ function (bundle)
             de_df <- current_de_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No differential expression rows are available for this contrast."))
             contrast_row <- current_contrast_row()
+            shiny::validate(shiny::need(nrow(contrast_row) > 0L, 
+                "Select a valid contrast to draw the MA plot."))
             plotly::layout(build_de_plot(de_df = de_df, x_col = "AveExpr", 
                 y_col = "logFC", title = paste0("MA plot: ", 
-                  contrast_row$display_label[[1L]]), source_id = "ma_plot", 
+                  first_or(contrast_row$display_label, "Unknown contrast")), source_id = "ma_plot", 
                 highlighted_gene_keys = selected_geneset_keys(), 
                 manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(), 
                 active_gene_key = state$active_gene_key, x_title = "AveExpr", 
@@ -666,9 +679,11 @@ function (bundle)
             de_df <- current_de_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No differential expression rows are available for this contrast."))
             contrast_row <- current_contrast_row()
+            shiny::validate(shiny::need(nrow(contrast_row) > 0L, 
+                "Select a valid contrast to draw the volcano plot."))
             plotly::layout(build_de_plot(de_df = de_df, x_col = "logFC", 
                 y_col = "neg_log10_p", title = paste0("Volcano plot: ", 
-                  contrast_row$display_label[[1L]]), source_id = "volcano_plot", 
+                  first_or(contrast_row$display_label, "Unknown contrast")), source_id = "volcano_plot", 
                 highlighted_gene_keys = selected_geneset_keys(), 
                 manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(), 
                 active_gene_key = state$active_gene_key, x_title = "logFC", 
@@ -700,9 +715,10 @@ function (bundle)
         })
         shiny::observeEvent(input$run_enrichr, {
             contrast_row <- current_contrast_row()
+            shiny::req(nrow(contrast_row) > 0L)
             selected_symbols <- resolve_gene_symbols(state$lasso_gene_keys, 
                 bundle$gene_df)
-            cache_key <- paste(contrast_row$contrast_key[[1L]], 
+            cache_key <- paste(first_or(contrast_row$contrast_key, "contrast"), 
                 input$enrichr_db, paste(sort(selected_symbols), 
                   collapse = "|"), sep = "::")
             if (exists(cache_key, envir = state$enrichr_cache, 
@@ -852,6 +868,12 @@ function (event)
         values <- as.character(customdata)
     }
     unique(values[nzchar(values)])
+}
+safe_event_data <-
+function (event, source) 
+{
+    tryCatch(suppressWarnings(plotly::event_data(event, source = source)), 
+        error = function(...) NULL)
 }
 infer_fit_method <-
 function (fit) 
