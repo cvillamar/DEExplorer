@@ -246,11 +246,11 @@ function (bundle, x_pc, y_pc, color_col = NULL, shape_col = NULL,
     size_values <- if (!is.null(size_col)) 
         pca_df[[size_col]]
     else rep(14, nrow(pca_df))
-    plotly::layout(plotly::add_markers(plotly::plot_ly(data = pca_df, 
-        x = pca_df[[x_pc]], y = pca_df[[y_pc]], type = "scatter", 
+    plotly::layout(plotly::plot_ly(data = pca_df, x = pca_df[[x_pc]], 
+        y = pca_df[[y_pc]], type = "scatter", 
         mode = "markers+text", text = pca_df$sample_id, textposition = "top center", 
         textfont = list(size = 9, color = "#2f3e46"), hovertext = pca_df$hover_text, 
-        hoverinfo = "text", source = "pca_plot"), marker = list(color = scale_marker_color(color_values), 
+        hoverinfo = "text", source = "pca_plot", marker = list(color = scale_marker_color(color_values), 
         size = scale_marker_size(size_values), symbol = scale_marker_symbol(shape_values), 
         opacity = 0.88, line = list(color = "#ffffff", width = 1), 
         sizemode = "diameter")), 
@@ -456,9 +456,7 @@ function (bundle)
         pca_y_default <- if (length(pca_choices) >= 2L) 
             pca_choices[[2L]]
         else pca_x_default
-        pca_size_default <- if ("lib.size" %in% sample_metadata_choices) 
-            "lib.size"
-        else "None"
+        pca_size_default <- "None"
         enrichr_choices <- bundle$options$enrichr_databases
         if (!length(enrichr_choices)) {
             enrichr_choices <- default_enrichr_databases()
