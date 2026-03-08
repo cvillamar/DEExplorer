@@ -33,7 +33,13 @@ The generated Shiny app has two tabs:
 
 ```r
 # install.packages("remotes")
-remotes::install_github("user/repo")
+remotes::install_github("cvillamar/DEExplorer")
+```
+
+For SSH/private access:
+
+```r
+remotes::install_git("git@github.com:cvillamar/DEExplorer.git")
 ```
 
 Then load the package:

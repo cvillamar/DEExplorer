@@ -82,9 +82,12 @@ function (de_df, x_col, y_col, title, source_id, highlighted_gene_keys = charact
         x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
         "`")), name = "Active gene", marker = list(color = "#0b6e4f", 
         size = 13, symbol = "star"))
-    plotly::layout(p, title = list(text = title), xaxis = list(title = x_title), 
+    p <- plotly::layout(p, title = list(text = title), xaxis = list(title = x_title), 
         yaxis = list(title = y_title), dragmode = "lasso", legend = list(orientation = "h", 
             y = -0.18))
+    p <- plotly::event_register(p, "plotly_hover")
+    p <- plotly::event_register(p, "plotly_selected")
+    p
 }
 build_enrichr_barplot <-
 function (enrichr_df) 
@@ -419,19 +422,34 @@ function (bundle)
     force(bundle)
     function(input, output, session) {
         stopifnot(inherits(bundle, "deexplorer_bundle"))
+        first_or <- function(x, default = NULL) {
+            if (length(x)) {
+                x[[1L]]
+            }
+            else {
+                default
+            }
+        }
         sample_metadata_choices <- setdiff(colnames(bundle$sample_df), 
             c("sample_key"))
         pca_choices <- grep("^PC[0-9]+$", colnames(bundle$pca_scores), 
             value = TRUE)
         group_default <- if ("Condition" %in% sample_metadata_choices) 
             "Condition"
-        else sample_metadata_choices[[1L]]
-        pca_y_default <- pca_choices[[min(2L, length(pca_choices))]]
+        else first_or(sample_metadata_choices, "sample_id")
+        pca_x_default <- first_or(pca_choices, "PC1")
+        pca_y_default <- if (length(pca_choices) >= 2L) 
+            pca_choices[[2L]]
+        else pca_x_default
         pca_size_default <- if ("lib.size" %in% sample_metadata_choices) 
             "lib.size"
         else "None"
+        enrichr_choices <- bundle$options$enrichr_databases
+        if (!length(enrichr_choices)) {
+            enrichr_choices <- default_enrichr_databases()
+        }
         shiny::updateSelectInput(session, "pca_x_pc", choices = pca_choices, 
-            selected = pca_choices[[1L]])
+            selected = pca_x_default)
         shiny::updateSelectInput(session, "pca_y_pc", choices = pca_choices, 
             selected = pca_y_default)
         shiny::updateSelectInput(session, "pca_color", choices = c("None", 
@@ -447,13 +465,13 @@ function (bundle)
         shiny::updateSelectInput(session, "pca_size", choices = c("None", 
             sample_metadata_choices), selected = pca_size_default)
         shiny::updateSelectInput(session, "contrast_key", choices = stats::setNames(bundle$contrast_catalog$contrast_key, 
-            bundle$contrast_catalog$display_label), selected = bundle$contrast_catalog$contrast_key[[1L]])
+            bundle$contrast_catalog$display_label), selected = first_or(bundle$contrast_catalog$contrast_key))
         shiny::updateSelectInput(session, "gene_box_group", choices = sample_metadata_choices, 
             selected = group_default)
         shiny::updateSelectizeInput(session, "geneset_name", 
             choices = bundle$msigdb_names, server = TRUE)
-        shiny::updateSelectInput(session, "enrichr_db", choices = bundle$options$enrichr_databases, 
-            selected = bundle$options$enrichr_databases[[1L]])
+        shiny::updateSelectInput(session, "enrichr_db", choices = enrichr_choices, 
+            selected = first_or(enrichr_choices))
         state <- shiny::reactiveValues(active_gene_key = NULL, 
             lasso_gene_keys = character(), enrichr_cache = new.env(parent = emptyenv()), 
             enrichr_result = NULL)
@@ -479,6 +497,9 @@ function (bundle)
         })
         fgsea_hit <- shiny::reactive({
             current_contrast <- current_contrast_row()
+            if (!nrow(current_contrast)) {
+                return(data.frame())
+            }
             resolve_fgsea_hit(bundle = bundle, contrast_name = current_contrast$contrast[[1L]], 
                 geneset_name = input$geneset_name)
         })
@@ -514,10 +535,15 @@ function (bundle)
         }, ignoreNULL = FALSE)
         shiny::observeEvent(input$de_table_rows_selected, {
             de_df <- filtered_table()
-            selected_index <- input$de_table_rows_selected[[1L]]
+            selected_rows <- input$de_table_rows_selected
+            if (!length(selected_rows)) {
+                return(invisible(NULL))
+            }
+            selected_index <- selected_rows[[1L]]
             if (length(selected_index) && selected_index <= nrow(de_df)) {
                 state$active_gene_key <- de_df$gene_key[[selected_index]]
             }
+            invisible(NULL)
         })
         shiny::observeEvent(input$de_table_hover, {
             if (input$de_table_hover %in% bundle$gene_df$gene_key) {
