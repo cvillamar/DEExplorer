@@ -625,7 +625,8 @@ function (bundle)
                 return(shiny::tagList(shiny::h4("Current selection"), 
                   shiny::div(class = "deexplorer-note", "Select a contrast to populate DEG exploration panels.")))
             }
-            build_selection_summary(contrast_label = contrast_row$display_label[[1L]], 
+            build_selection_summary(contrast_label = first_or(contrast_row$display_label, 
+                first_or(contrast_row$contrast, "Unknown contrast")), 
                 lasso_gene_count = length(state$lasso_gene_keys), 
                 manual_gene_count = length(manual_gene_keys()), 
                 geneset_name = if (nzchar(input$geneset_name %||% 
@@ -852,6 +853,9 @@ function (event)
     }
     customdata <- event$customdata
     if (is.matrix(customdata) || is.data.frame(customdata)) {
+        if (!nrow(customdata) || !ncol(customdata)) {
+            return(character())
+        }
         values <- customdata[, 1L]
     }
     else if (is.list(customdata)) {
@@ -1353,10 +1357,10 @@ function (fit, fit_name, dge, gene_id_col, gene_symbol_col)
 write_app_wrapper_files <-
 function (app_dir, title) 
 {
-    ui_lines <- c("library(DEExplorer)", "", sprintf("deexplorer_ui(title = %s)", 
+    ui_lines <- c(sprintf("DEExplorer::deexplorer_ui(title = %s)", 
         string_literal(title)))
-    server_lines <- c("library(DEExplorer)", "", "bundle <- readRDS(\"app-data.rds\")", 
-        "deexplorer_server(bundle)")
+    server_lines <- c("bundle <- readRDS(\"app-data.rds\")", "", 
+        "DEExplorer::deexplorer_server(bundle)")
     writeLines(ui_lines, con = file.path(app_dir, "ui.R"))
     writeLines(server_lines, con = file.path(app_dir, "server.R"))
 }
