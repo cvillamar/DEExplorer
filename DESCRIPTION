@@ -1,0 +1,26 @@
+Package: DEExplorer
+Type: Package
+Title: Interactive Exploration of Bulk RNA-seq Differential Expression Results
+Version: 0.1.0
+Authors@R:
+    person("DEExplorer", "Team", email = "team@example.com", role = c("aut", "cre"))
+Description: Package-oriented Shiny components to explore edgeR DGEList
+    objects together with limma differential expression fits produced by
+    eBayes() or treat(). Includes PCA/QC views, linked MA and volcano
+    exploration, contrast-aware DEG tables, and lasso-driven Enrichr workflows.
+License: GPL-3
+Encoding: UTF-8
+Depends: R (>= 4.2.0)
+Imports:
+    bslib,
+    DT,
+    edgeR,
+    httr2,
+    limma,
+    plotly,
+    shiny
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Author: DEExplorer Team [aut, cre]
+Maintainer: DEExplorer Team <team@example.com>
