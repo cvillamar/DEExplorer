@@ -58,33 +58,28 @@ function (de_df, x_col, y_col, title, source_id, highlighted_gene_keys = charact
     has_highlight <- length(highlighted_gene_keys) > 0L || length(manual_gene_keys) > 0L
     bg_nonsig_color <- if (has_highlight) "rgba(113, 128, 150, 0.15)" else "rgba(113, 128, 150, 0.50)"
     bg_sig_color    <- if (has_highlight) "rgba(197, 48, 48, 0.20)"  else "rgba(197, 48, 48, 0.78)"
+    geneset_data <- rbind(layers$geneset, layers$manual)
+    xf <- stats::as.formula(paste0("~`", x_col, "`"))
+    yf <- stats::as.formula(paste0("~`", y_col, "`"))
     p <- plotly::plot_ly(source = source_id)
-    p <- add_gene_trace(p, data = layers$nonsig, x_values = stats::as.formula(paste0("~`",
-        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col,
-        "`")), name = "FDR >= 0.05", marker = list(color = bg_nonsig_color,
+    p <- add_gene_trace(p, data = layers$nonsig, x_values = xf,
+        y_values = yf, name = "FDR >= 0.05", marker = list(color = bg_nonsig_color,
         size = 6))
-    p <- add_gene_trace(p, data = layers$sig, x_values = stats::as.formula(paste0("~`",
-        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col,
-        "`")), name = "FDR < 0.05", marker = list(color = bg_sig_color,
+    p <- add_gene_trace(p, data = layers$sig, x_values = xf,
+        y_values = yf, name = "FDR < 0.05", marker = list(color = bg_sig_color,
         size = 7))
-    p <- add_gene_trace(p, data = layers$geneset, x_values = stats::as.formula(paste0("~`", 
-        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
-        "`")), name = "Selected gene set", marker = list(color = "rgba(255, 255, 255, 0)", 
-        size = 10, symbol = "circle-open", line = list(color = "#e76f51", 
-            width = 2)))
-    p <- add_gene_trace(p, data = layers$leading, x_values = stats::as.formula(paste0("~`", 
-        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
-        "`")), name = "Leading edge", marker = list(color = "rgba(255, 255, 255, 0)", 
-        size = 12, symbol = "diamond-open", line = list(color = "#8d6a00", 
+    p <- add_gene_trace(p, data = geneset_data, x_values = xf,
+        y_values = yf, name = "Gene set", marker = list(color = "#e76f51",
+        size = 9, opacity = 0.85))
+    p <- add_gene_trace(p, data = layers$leading, x_values = xf,
+        y_values = yf, name = "Leading edge", marker = list(color = "rgba(255, 255, 255, 0)",
+        size = 12, symbol = "diamond-open", line = list(color = "#8d6a00",
             width = 3)))
-    p <- add_gene_trace(p, data = layers$manual, x_values = stats::as.formula(paste0("~`", 
-        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
-        "`")), name = "Manual highlight", marker = list(color = "#264653", 
-        size = 11, symbol = "x"))
-    p <- add_gene_trace(p, data = layers$active, x_values = stats::as.formula(paste0("~`", 
-        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
-        "`")), name = "Active gene", marker = list(color = "#0b6e4f", 
-        size = 13, symbol = "star"))
+    if (nrow(layers$active)) {
+        p <- add_gene_trace(p, data = layers$active, x_values = xf,
+            y_values = yf, name = "Active gene", marker = list(color = "#0b6e4f",
+            size = 13, symbol = "star"))
+    }
     p <- plotly::layout(p, title = list(text = title), xaxis = list(title = x_title),
         yaxis = list(title = y_title), legend = list(orientation = "h",
             y = -0.18))
@@ -1584,13 +1579,14 @@ function (de_df, highlighted_gene_keys, manual_gene_keys, leading_edge_keys,
         de_df$gene_key)
     manual_gene_keys <- intersect(manual_gene_keys, de_df$gene_key)
     leading_edge_keys <- intersect(leading_edge_keys, de_df$gene_key)
-    list(nonsig = de_df[!de_df$significant, , drop = FALSE], 
-        sig = de_df[de_df$significant, , drop = FALSE], geneset = de_df[de_df$gene_key %in% 
-            setdiff(highlighted_gene_keys, leading_edge_keys), 
-            , drop = FALSE], leading = de_df[de_df$gene_key %in% 
-            leading_edge_keys, , drop = FALSE], manual = de_df[de_df$gene_key %in% 
-            setdiff(manual_gene_keys, leading_edge_keys), , drop = FALSE], 
-        active = de_df[de_df$gene_key %in% active_gene_key, , 
+    geneset_keys <- setdiff(highlighted_gene_keys, leading_edge_keys)
+    manual_only_keys <- setdiff(manual_gene_keys, c(leading_edge_keys, highlighted_gene_keys))
+    list(nonsig = de_df[!de_df$significant, , drop = FALSE],
+        sig = de_df[de_df$significant, , drop = FALSE], geneset = de_df[de_df$gene_key %in%
+            geneset_keys, , drop = FALSE], leading = de_df[de_df$gene_key %in%
+            leading_edge_keys, , drop = FALSE], manual = de_df[de_df$gene_key %in%
+            manual_only_keys, , drop = FALSE],
+        active = de_df[de_df$gene_key %in% active_gene_key, ,
             drop = FALSE])
 }
 validate_dge_input <-
