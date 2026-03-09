@@ -344,6 +344,31 @@ function (fit, fit_name, contrast_name, gene_df, gene_lookup,
     tt$hover_text <- make_gene_hover_text(tt)
     tt
 }
+build_tissue_expression_barplot <-
+function (expr_df)
+{
+    shiny::validate(shiny::need(
+        !is.null(expr_df) && nrow(expr_df) > 0L,
+        "No tissue expression data available for this gene."
+    ))
+    expr_df <- expr_df[order(-expr_df$rna_value), , drop = FALSE]
+    expr_df <- utils::head(expr_df, 20L)
+    expr_df$organ <- factor(expr_df$organ, levels = rev(expr_df$organ))
+    plotly::layout(
+        plotly::plot_ly(
+            data = expr_df, x = ~rna_value, y = ~organ,
+            type = "bar", orientation = "h",
+            marker = list(color = "#3489ca"),
+            text = ~paste0("<b>", organ, "</b><br>",
+                           "RNA: ", format_number(rna_value), " TPM"),
+            hoverinfo = "text"
+        ),
+        title = list(text = "Tissue Expression (RNA, TPM)", font = list(size = 13)),
+        xaxis = list(title = "TPM"),
+        yaxis = list(title = ""),
+        margin = list(l = 140)
+    )
+}
 coalesce_character <-
 function (primary, fallback) 
 {
@@ -460,7 +485,8 @@ function (bundle)
         shiny::updateSelectizeInput(session, "geneset_name",
             choices = bundle$msigdb_names, server = TRUE)
         state <- shiny::reactiveValues(active_gene_key = NULL,
-            hover_gene_key = NULL)
+            hover_gene_key = NULL,
+            ot_cache = new.env(parent = emptyenv()))
         current_contrast_row <- shiny::reactive({
             key <- input$contrast_key
             shiny::req(!is.null(key), nzchar(key))
@@ -715,8 +741,92 @@ function (bundle)
                 "Hover or select a gene to show the per-sample log-CPM distribution."))
             gene_expr_df <- prepare_gene_expression_df(bundle, 
                 gene_row$gene_key[[1L]], input$gene_box_group)
-            build_gene_boxplot(gene_expr_df, gene_row$display_symbol[[1L]], 
+            build_gene_boxplot(gene_expr_df, gene_row$display_symbol[[1L]],
                 input$gene_box_group)
+        })
+        active_ensembl_id <- shiny::reactive({
+            gene_row <- active_gene_row()
+            if (!nrow(gene_row)) return(NULL)
+            gene_id <- gene_row$gene_id[[1L]]
+            if (is.null(gene_id) || !grepl("^ENSG\\d+$", gene_id)) return(NULL)
+            gene_id
+        })
+        active_gene_info <- shiny::reactive({
+            eid <- active_ensembl_id()
+            if (is.null(eid)) return(NULL)
+            cache_key <- paste0("info_", eid)
+            if (exists(cache_key, envir = state$ot_cache, inherits = FALSE)) {
+                return(get(cache_key, envir = state$ot_cache, inherits = FALSE))
+            }
+            result <- fetch_opentargets_gene_info(eid)
+            assign(cache_key, result, envir = state$ot_cache)
+            result
+        })
+        active_gene_assoc <- shiny::reactive({
+            eid <- active_ensembl_id()
+            if (is.null(eid)) return(NULL)
+            cache_key <- paste0("assoc_", eid)
+            if (exists(cache_key, envir = state$ot_cache, inherits = FALSE)) {
+                return(get(cache_key, envir = state$ot_cache, inherits = FALSE))
+            }
+            result <- fetch_opentargets_associations(eid)
+            assign(cache_key, result, envir = state$ot_cache)
+            result
+        })
+        output$gene_function_text <- shiny::renderUI({
+            info <- active_gene_info()
+            gene_row <- active_gene_row()
+            if (is.null(info) || !nrow(gene_row)) {
+                return(shiny::div(class = "deexplorer-note",
+                    "Click a gene to load external annotations from Open Targets."))
+            }
+            shiny::tagList(
+                shiny::h4(paste0(info$symbol, " \u2014 ", info$name)),
+                shiny::p(info$function_text,
+                    style = "font-size: 0.92rem; color: #4a5568; max-height: 120px; overflow-y: auto;"),
+                shiny::div(class = "deexplorer-note",
+                    shiny::tags$a(
+                        href = paste0("https://platform.opentargets.org/target/", active_ensembl_id()),
+                        target = "_blank",
+                        paste0("View ", info$symbol, " on Open Targets")
+                    )
+                )
+            )
+        })
+        output$tissue_expression_plot <- plotly::renderPlotly({
+            info <- active_gene_info()
+            shiny::validate(shiny::need(
+                !is.null(info) && nrow(info$expressions_df) > 0L,
+                "Click a gene to show tissue expression."
+            ))
+            build_tissue_expression_barplot(info$expressions_df)
+        })
+        output$disease_associations_table <- DT::renderDT({
+            assoc_df <- active_gene_assoc()
+            shiny::validate(shiny::need(
+                !is.null(assoc_df) && nrow(assoc_df) > 0L,
+                "Click a gene to show disease associations."
+            ))
+            numeric_cols <- setdiff(colnames(assoc_df), "Disease")
+            DT::formatRound(
+                DT::datatable(assoc_df, rownames = FALSE, filter = "top",
+                    options = list(pageLength = 10, scrollX = TRUE,
+                        columnDefs = list(list(
+                            targets = seq_along(numeric_cols),
+                            render = DT::JS(
+                                "function(data, type, row, meta) {",
+                                "  if (type === 'display') {",
+                                "    if (data === 0 || data === null) return '';",
+                                "    return parseFloat(data).toFixed(2);",
+                                "  }",
+                                "  return data;",
+                                "}"
+                            )
+                        ))
+                    )
+                ),
+                columns = numeric_cols, digits = 2
+            )
         })
     }
 }
@@ -776,7 +886,16 @@ function ()
             DT::DTOutput("de_table"))), shiny::column(width = 5,
             shiny::div(class = "deexplorer-card", shiny::uiOutput("selected_gene_summary")),
             shiny::div(class = "deexplorer-card", plotly::plotlyOutput("gene_boxplot",
-                height = "310px")))))))
+                height = "310px")))),
+        shiny::fluidRow(shiny::column(width = 12,
+            shiny::div(class = "deexplorer-card", shiny::uiOutput("gene_function_text")))),
+        shiny::fluidRow(shiny::column(width = 4,
+            shiny::div(class = "deexplorer-card",
+                plotly::plotlyOutput("tissue_expression_plot", height = "420px"))),
+            shiny::column(width = 8,
+                shiny::div(class = "deexplorer-card",
+                    shiny::h4("Disease Associations (Open Targets)"),
+                    DT::DTOutput("disease_associations_table")))))))
 }
 download_matrix_with_annotations <-
 function (matrix_data, gene_df, path) 
@@ -793,9 +912,131 @@ function (x, digits = 3)
     formatC(x, digits = digits, format = "fg", flag = "#")
 }
 format_pvalue <-
-function (x) 
+function (x)
 {
     format(x, digits = 3, scientific = TRUE)
+}
+fetch_opentargets_associations <-
+function (ensembl_id, size = 20L)
+{
+    if (is.null(ensembl_id) || !grepl("^ENSG\\d+$", ensembl_id)) {
+        return(NULL)
+    }
+    query <- '
+    query TargetAssociations($id: String!) {
+      target(ensemblId: $id) {
+        associatedDiseases(
+          page: { index: 0, size: 20 }
+          orderByScore: "score"
+        ) {
+          count
+          rows {
+            disease { id name }
+            score
+            datasourceScores { componentId: id score }
+          }
+        }
+      }
+    }'
+    tryCatch({
+        resp <- httr2::req_perform(
+            httr2::req_body_json(
+                httr2::req_url_path_append(
+                    httr2::request("https://api.platform.opentargets.org"),
+                    "api", "v4", "graphql"
+                ),
+                data = list(query = query, variables = list(id = ensembl_id))
+            )
+        )
+        payload <- httr2::resp_body_json(resp, simplifyVector = FALSE)
+        rows <- payload$data$target$associatedDiseases$rows
+        if (!length(rows)) return(NULL)
+        all_source_ids <- unique(unlist(lapply(rows, function(r) {
+            vapply(r$datasourceScores, function(s) s$componentId, character(1))
+        })))
+        parsed <- lapply(rows, function(r) {
+            base <- data.frame(
+                Disease = r$disease$name %||% "",
+                Score = r$score %||% 0,
+                stringsAsFactors = FALSE
+            )
+            scores <- stats::setNames(
+                vapply(r$datasourceScores, function(s) s$score %||% 0, numeric(1)),
+                vapply(r$datasourceScores, function(s) s$componentId, character(1))
+            )
+            for (src in all_source_ids) {
+                base[[src]] <- unname(scores[src]) %||% NA_real_
+            }
+            base
+        })
+        result <- do.call(rbind, parsed)
+        result[is.na(result)] <- 0
+        result
+    }, error = function(e) NULL)
+}
+fetch_opentargets_gene_info <-
+function (ensembl_id)
+{
+    if (is.null(ensembl_id) || !grepl("^ENSG\\d+$", ensembl_id)) {
+        return(NULL)
+    }
+    query <- '
+    query TargetInfo($id: String!) {
+      target(ensemblId: $id) {
+        approvedSymbol
+        approvedName
+        functionDescriptions
+        expressions {
+          tissue { label organs }
+          rna { level value unit }
+        }
+      }
+    }'
+    tryCatch({
+        resp <- httr2::req_perform(
+            httr2::req_body_json(
+                httr2::req_url_path_append(
+                    httr2::request("https://api.platform.opentargets.org"),
+                    "api", "v4", "graphql"
+                ),
+                data = list(query = query, variables = list(id = ensembl_id))
+            )
+        )
+        payload <- httr2::resp_body_json(resp, simplifyVector = FALSE)
+        target <- payload$data$target
+        if (is.null(target)) return(NULL)
+        func_texts <- target$functionDescriptions
+        func_text <- if (length(func_texts)) {
+            sub("\\s*\\{ECO:.*$", "", func_texts[[1L]])
+        } else ""
+        expr_rows <- lapply(target$expressions, function(e) {
+            organs <- e$tissue$organs
+            if (!length(organs)) organs <- list(e$tissue$label)
+            data.frame(
+                tissue = e$tissue$label %||% "",
+                organ = organs[[1L]] %||% "",
+                rna_value = e$rna$value %||% 0,
+                rna_level = e$rna$level %||% -1L,
+                stringsAsFactors = FALSE
+            )
+        })
+        expr_df <- do.call(rbind, expr_rows)
+        if (!is.null(expr_df) && nrow(expr_df)) {
+            expr_df <- expr_df[expr_df$rna_value > 0, , drop = FALSE]
+            organ_agg <- stats::aggregate(
+                rna_value ~ organ, data = expr_df, FUN = max
+            )
+            organ_agg <- organ_agg[order(-organ_agg$rna_value), , drop = FALSE]
+        } else {
+            organ_agg <- data.frame(organ = character(), rna_value = numeric())
+        }
+        list(
+            symbol = target$approvedSymbol %||% "",
+            name = target$approvedName %||% "",
+            function_text = func_text,
+            expressions_df = organ_agg
+        )
+    }, error = function(e) NULL)
 }
 get_plotly_customdata <-
 function (event) 
