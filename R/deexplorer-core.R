@@ -656,7 +656,9 @@ function (bundle)
             }
         }, ignoreNULL = TRUE)
         shiny::observeEvent(input$reset_manual_genes, {
-            shiny::updateTextAreaInput(session, "manual_genes", 
+            shiny::updateSelectizeInput(session, "geneset_name",
+                selected = "")
+            shiny::updateTextAreaInput(session, "manual_genes",
                 value = "")
         })
         shiny::observeEvent(input$contrast_key, {
