@@ -520,7 +520,8 @@ function (bundle)
         shiny::updateSelectInput(session, "gene_box_group", choices = sample_metadata_choices, 
             selected = group_default)
         shiny::updateSelectizeInput(session, "geneset_name",
-            choices = bundle$msigdb_names, server = TRUE)
+            choices = c(stats::setNames("", ""), bundle$msigdb_names),
+            server = TRUE, selected = "")
         state <- shiny::reactiveValues(active_gene_key = NULL,
             hover_gene_key = NULL,
             ot_cache = new.env(parent = emptyenv()))
