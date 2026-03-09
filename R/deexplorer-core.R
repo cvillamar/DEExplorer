@@ -48,21 +48,24 @@ function (fits, fit_names, gene_df, gene_lookup, fdr_cutoff)
     list(tables = tables, contrast_catalog = contrast_catalog)
 }
 build_de_plot <-
-function (de_df, x_col, y_col, title, source_id, highlighted_gene_keys = character(), 
-    manual_gene_keys = character(), leading_edge_keys = character(), 
-    active_gene_key = character(), x_title, y_title) 
+function (de_df, x_col, y_col, title, source_id, highlighted_gene_keys = character(),
+    manual_gene_keys = character(), leading_edge_keys = character(),
+    active_gene_key = character(), x_title, y_title)
 {
-    layers <- subset_plot_layers(de_df = de_df, highlighted_gene_keys = highlighted_gene_keys, 
-        manual_gene_keys = manual_gene_keys, leading_edge_keys = leading_edge_keys, 
+    layers <- subset_plot_layers(de_df = de_df, highlighted_gene_keys = highlighted_gene_keys,
+        manual_gene_keys = manual_gene_keys, leading_edge_keys = leading_edge_keys,
         active_gene_key = active_gene_key)
+    has_highlight <- length(highlighted_gene_keys) > 0L || length(manual_gene_keys) > 0L
+    bg_nonsig_color <- if (has_highlight) "rgba(113, 128, 150, 0.15)" else "rgba(113, 128, 150, 0.50)"
+    bg_sig_color    <- if (has_highlight) "rgba(197, 48, 48, 0.20)"  else "rgba(197, 48, 48, 0.78)"
     p <- plotly::plot_ly(source = source_id)
-    p <- add_gene_trace(p, data = layers$nonsig, x_values = stats::as.formula(paste0("~`", 
-        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
-        "`")), name = "FDR >= 0.05", marker = list(color = "rgba(113, 128, 150, 0.50)", 
+    p <- add_gene_trace(p, data = layers$nonsig, x_values = stats::as.formula(paste0("~`",
+        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col,
+        "`")), name = "FDR >= 0.05", marker = list(color = bg_nonsig_color,
         size = 6))
-    p <- add_gene_trace(p, data = layers$sig, x_values = stats::as.formula(paste0("~`", 
-        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
-        "`")), name = "FDR < 0.05", marker = list(color = "rgba(197, 48, 48, 0.78)", 
+    p <- add_gene_trace(p, data = layers$sig, x_values = stats::as.formula(paste0("~`",
+        x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col,
+        "`")), name = "FDR < 0.05", marker = list(color = bg_sig_color,
         size = 7))
     p <- add_gene_trace(p, data = layers$geneset, x_values = stats::as.formula(paste0("~`", 
         x_col, "`")), y_values = stats::as.formula(paste0("~`", y_col, 
@@ -550,9 +553,21 @@ function (bundle)
             if (is.null(geneset_name) || !nzchar(geneset_name)) {
                 return(character())
             }
-            resolve_gene_keys(bundle$msigdb[[geneset_name]], 
+            resolve_gene_keys(bundle$msigdb[[geneset_name]],
                 bundle$gene_lookup)
         })
+        shiny::observeEvent(input$geneset_name, {
+            geneset_name <- input$geneset_name
+            if (is.null(geneset_name) || !nzchar(geneset_name)) {
+                shiny::updateTextAreaInput(session, "manual_genes", value = "")
+                return(invisible(NULL))
+            }
+            symbols <- bundle$msigdb[[geneset_name]]
+            if (length(symbols)) {
+                shiny::updateTextAreaInput(session, "manual_genes",
+                    value = paste(symbols, collapse = "\n"))
+            }
+        }, ignoreNULL = FALSE)
         fgsea_hit <- shiny::reactive({
             current_contrast <- current_contrast_row()
             if (!nrow(current_contrast)) {
@@ -959,7 +974,9 @@ function ()
             shiny::selectInput("gene_box_group", "Group selected-gene boxplot by",
                 choices = character()), shiny::selectizeInput("geneset_name",
                 "MSigDB gene set", choices = NULL, selected = "",
-                options = list(placeholder = "Start typing a hallmark, GO term, or pathway")),
+                options = list(
+                    placeholder = "Type a Hallmark, GO or pathway",
+                    respect_word_boundaries = FALSE)),
             shiny::textAreaInput("manual_genes", "Highlight genes (one per line)",
                 rows = 8, placeholder = "STAT1\nCXCL8\nTFRC"),
             shiny::actionButton("reset_manual_genes", "Clear gene list"),
