@@ -961,10 +961,10 @@ function (bundle, gene_key, group_col)
     else {
         sample_df[colnames(bundle$lcpm), "sample_id"]
     }
-    expr_df <- data.frame(sample_key = colnames(bundle$lcpm), 
-        sample_id = sample_df[colnames(bundle$lcpm), "sample_id"], 
-        group_label = as.character(group_values[colnames(bundle$lcpm)]), 
-        log_cpm = as.numeric(bundle$lcpm[gene_key, colnames(bundle$lcpm)]), 
+    expr_df <- data.frame(sample_key = colnames(bundle$lcpm),
+        sample_id = sample_df[colnames(bundle$lcpm), "sample_id"],
+        group_label = as.character(group_values),
+        log_cpm = as.numeric(bundle$lcpm[gene_key, ]),
         stringsAsFactors = FALSE)
     expr_df$hover_text <- paste0("<b>", expr_df$sample_id, "</b><br>", 
         group_col %||% "Sample", ": ", expr_df$group_label, "<br>", 
