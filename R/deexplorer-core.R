@@ -440,8 +440,8 @@ function (...)
     list(fits = fits, fit_names = fit_names)
 }
 create_deexplorer_bundle <-
-function (dge, ..., msigdb_genesets = NULL, fgsea_files = NULL,
-    sample_id_col = "Sample", gene_id_col = "ENSEMBL",
+function (dge, ..., msigdb_genesets = NULL, msigdb_path = NULL,
+    fgsea_files = NULL, sample_id_col = "Sample", gene_id_col = "ENSEMBL",
     gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05, prior_count = 2)
 {
     validate_dge_input(dge, sample_id_col = sample_id_col)
@@ -461,7 +461,7 @@ function (dge, ..., msigdb_genesets = NULL, fgsea_files = NULL,
     de_payload <- build_de_payload(fits = fit_info$fits, fit_names = fit_info$fit_names,
         gene_df = gene_df, gene_lookup = gene_lookup, fdr_cutoff = fdr_cutoff)
     msigdb_genesets <- read_msigdb_genesets(msigdb_genesets = msigdb_genesets,
-        msigdb_path = NULL)
+        msigdb_path = msigdb_path)
     fgsea_results <- read_fgsea_results(fgsea_files = fgsea_files,
         contrast_names = de_payload$contrast_catalog$contrast)
     bundle <- list(counts = matrices$counts, cpm = matrices$cpm, 
@@ -704,9 +704,11 @@ function (bundle)
             } else {
                 character()
             }
+            labeled <- stats::setNames(collections,
+                vapply(collections, format_collection_label, character(1)))
             shiny::updateSelectInput(session, "fgsea_collection",
-                choices = collections,
-                selected = if (length(collections)) collections[[1L]] else "")
+                choices = labeled,
+                selected = if (length(labeled)) labeled[[1L]] else "")
         })
         output$fgsea_barplot <- plotly::renderPlotly({
             contrast_row <- current_contrast_row()
@@ -998,8 +1000,35 @@ function (matrix_data, gene_df, path)
         , drop = FALSE], check.names = FALSE))
     utils::write.csv(download_df, path, row.names = FALSE)
 }
+format_collection_label <-
+function (collection)
+{
+    known <- list(
+        hallmark = "Hallmarks",
+        gobp = "GO:BP",
+        gocc = "GO:CC",
+        gomf = "GO:MF",
+        kegg = "KEGG",
+        reactome = "Reactome",
+        biocarta = "BioCarta",
+        wp = "WikiPathways",
+        pid = "PID",
+        tft = "TFT",
+        mir = "miRNA Targets",
+        hpo = "HPO",
+        positional_x = "Positional (X)",
+        positional = "Positional"
+    )
+    label <- known[[tolower(collection)]]
+    if (!is.null(label)) return(label)
+    if (grepl("^positional_", collection, ignore.case = TRUE)) {
+        chr <- sub("^positional_", "", collection, ignore.case = TRUE)
+        return(paste0("Positional (", toupper(chr), ")"))
+    }
+    toupper(collection)
+}
 format_number <-
-function (x, digits = 3) 
+function (x, digits = 3)
 {
     formatC(x, digits = digits, format = "fg", flag = "#")
 }
@@ -1411,14 +1440,15 @@ function (identifiers, gene_lookup)
 }
 run_deexplorer_app <-
 function (dge, ..., title = "DEExplorer", msigdb_genesets = NULL,
-    fgsea_files = NULL, sample_id_col = "Sample",
+    msigdb_path = NULL, fgsea_files = NULL, sample_id_col = "Sample",
     gene_id_col = "ENSEMBL", gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05,
     prior_count = 2, launch.browser = interactive())
 {
     bundle <- create_deexplorer_bundle(dge = dge, ..., msigdb_genesets = msigdb_genesets,
-        fgsea_files = fgsea_files, sample_id_col = sample_id_col,
-        gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col,
-        fdr_cutoff = fdr_cutoff, prior_count = prior_count)
+        msigdb_path = msigdb_path, fgsea_files = fgsea_files,
+        sample_id_col = sample_id_col, gene_id_col = gene_id_col,
+        gene_symbol_col = gene_symbol_col, fdr_cutoff = fdr_cutoff,
+        prior_count = prior_count)
     shiny::shinyApp(ui = deexplorer_ui(title = title), server = deexplorer_server(bundle), 
         options = list(launch.browser = launch.browser))
 }
@@ -1609,7 +1639,7 @@ function (app_dir, title)
 write_deexplorer_app <-
 function (dge, ..., app_dir = "inst/shiny/deexplorer", title = "DEExplorer",
     overwrite = FALSE, launch = FALSE, msigdb_genesets = NULL,
-    fgsea_files = NULL, sample_id_col = "Sample",
+    msigdb_path = NULL, fgsea_files = NULL, sample_id_col = "Sample",
     gene_id_col = "ENSEMBL", gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05,
     prior_count = 2)
 {
@@ -1623,9 +1653,10 @@ function (dge, ..., app_dir = "inst/shiny/deexplorer", title = "DEExplorer",
             app_dir), call. = FALSE)
     }
     bundle <- create_deexplorer_bundle(dge = dge, ..., msigdb_genesets = msigdb_genesets,
-        fgsea_files = fgsea_files, sample_id_col = sample_id_col,
-        gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col,
-        fdr_cutoff = fdr_cutoff, prior_count = prior_count)
+        msigdb_path = msigdb_path, fgsea_files = fgsea_files,
+        sample_id_col = sample_id_col, gene_id_col = gene_id_col,
+        gene_symbol_col = gene_symbol_col, fdr_cutoff = fdr_cutoff,
+        prior_count = prior_count)
     saveRDS(bundle, file = file.path(app_dir, "app-data.rds"))
     write_app_wrapper_files(app_dir = app_dir, title = title)
     if (isTRUE(launch)) {

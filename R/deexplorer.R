@@ -111,6 +111,8 @@ normalize_gsea_files_input <- function(input_gsea_files) {
 #' @param input_MArrayLM One `MArrayLM` or a named list of one or more `MArrayLM` fits.
 #' @param input_gsea_files Optional character vector of fGSEA TSV file paths, or a named
 #'   list with `fgsea_files` (character vector) and/or `msigdb_genesets` (named list).
+#' @param msigdb_path Optional path to an `.rds` file containing a named list of gene sets
+#'   (gene-set names as keys, character vectors of gene symbols as values).
 #' @param out Output folder where `ui.R`, `server.R` and `app-data.rds` are written.
 #' @param title App title.
 #' @param overwrite Overwrite existing generated files.
@@ -126,6 +128,7 @@ deexplorer <- function(
   input_DGEList,
   input_MArrayLM,
   input_gsea_files = NULL,
+  msigdb_path = NULL,
   out = ".",
   title = "DEExplorer",
   overwrite = TRUE,
@@ -149,6 +152,7 @@ deexplorer <- function(
       overwrite = overwrite,
       launch = launch,
       msigdb_genesets = gsea$msigdb_genesets,
+      msigdb_path = msigdb_path,
       fgsea_files = gsea$fgsea_files,
       sample_id_col = sample_id_col,
       gene_id_col = gene_id_col,
