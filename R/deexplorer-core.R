@@ -807,10 +807,30 @@ function (bundle)
                 !is.null(assoc_df) && nrow(assoc_df) > 0L,
                 "Click a gene to show disease associations."
             ))
-            numeric_cols <- setdiff(colnames(assoc_df), "Disease")
+            col_meta <- ot_datasource_labels()
+            display_names <- vapply(colnames(assoc_df), function(cn) {
+                entry <- col_meta[[cn]]
+                if (!is.null(entry)) entry$label else cn
+            }, character(1), USE.NAMES = FALSE)
+            header_tips <- vapply(colnames(assoc_df), function(cn) {
+                entry <- col_meta[[cn]]
+                if (!is.null(entry)) entry$tip else cn
+            }, character(1), USE.NAMES = FALSE)
+            colnames(assoc_df) <- display_names
+            numeric_cols <- setdiff(display_names, "Disease")
+            header_cb <- DT::JS(sprintf(
+                "function(thead, data, start, end, display) {
+                    var tips = %s;
+                    $(thead).find('th').each(function(i) {
+                        $(this).attr('title', tips[i]);
+                    });
+                }",
+                jsonlite::toJSON(unname(header_tips), auto_unbox = FALSE)
+            ))
             DT::formatRound(
                 DT::datatable(assoc_df, rownames = FALSE, filter = "top",
                     options = list(pageLength = 10, scrollX = TRUE,
+                        headerCallback = header_cb,
                         columnDefs = list(list(
                             targets = seq_along(numeric_cols),
                             render = DT::JS(
@@ -1106,6 +1126,39 @@ function (sample_df)
             paste(labels, collapse = "<br>"))
     })
 }
+ot_datasource_labels <-
+function ()
+{
+    list(
+        Disease              = list(label = "Disease",              tip = "Disease or phenotype name"),
+        Score                = list(label = "Score",                tip = "Overall association score (0\u20131)"),
+        ot_genetics_portal   = list(label = "OT Genetics",         tip = "GWAS locus-to-gene pipeline (Open Targets Genetics)"),
+        gwas_credible_sets   = list(label = "GWAS Credible Sets",  tip = "Fine-mapped credible sets from curated GWAS studies"),
+        eva                  = list(label = "EVA",                 tip = "ClinVar germline variant\u2013disease associations (EBI EVA)"),
+        gene_burden          = list(label = "Gene Burden",         tip = "Rare-variant gene burden tests from exome/genome studies"),
+        genomics_england     = list(label = "Genomics England",    tip = "Genomics England PanelApp gene\u2013disease panels"),
+        gene2phenotype       = list(label = "Gene2Phenotype",      tip = "Curated developmental disorder gene\u2013phenotype pairs"),
+        uniprot_literature   = list(label = "UniProt Literature",  tip = "UniProt literature-curated variant annotations"),
+        uniprot_variants     = list(label = "UniProt Variants",    tip = "UniProt reviewed variant\u2013disease mappings"),
+        orphanet             = list(label = "Orphanet",            tip = "Orphanet rare disease\u2013gene associations"),
+        clingen              = list(label = "ClinGen",             tip = "ClinGen gene\u2013disease clinical validity curations"),
+        cancer_gene_census   = list(label = "Cancer Gene Census",  tip = "COSMIC Cancer Gene Census somatic driver genes"),
+        intogen              = list(label = "IntOGen",             tip = "IntOGen cancer driver gene identification"),
+        eva_somatic          = list(label = "EVA Somatic",         tip = "ClinVar somatic variant\u2013disease associations"),
+        cancer_biomarkers    = list(label = "Cancer Biomarkers",   tip = "Cancer Genome Interpreter biomarker\u2013drug\u2013disease links"),
+        chembl               = list(label = "ChEMBL",             tip = "ChEMBL drug mechanism of action evidence"),
+        crispr_screen        = list(label = "CRISPR Screen",       tip = "Project Score genome-wide CRISPR fitness screens"),
+        crispr               = list(label = "CRISPR",              tip = "CRISPR functional genomics screens"),
+        slapenrich           = list(label = "SLAPenrich",          tip = "SLAPenrich pathway-level somatic mutation enrichment"),
+        progeny              = list(label = "PROGENy",             tip = "PROGENy pathway activity from perturbation signatures"),
+        reactome             = list(label = "Reactome",            tip = "Reactome curated pathway associations"),
+        sysbio               = list(label = "SysBio",              tip = "Systems biology literature-curated functional evidence"),
+        europepmc            = list(label = "Europe PMC",          tip = "Europe PMC text-mined co-occurrences"),
+        expression_atlas     = list(label = "Expression Atlas",    tip = "Expression Atlas differential expression evidence"),
+        impc                 = list(label = "IMPC",                tip = "IMPC mouse model phenotype\u2013human disease associations"),
+        ot_crispr_validation = list(label = "OT CRISPR Validation", tip = "Open Targets CRISPR validation experiments")
+    )
+}
 map_table_gene_keys <-
 function (table_df, gene_lookup) 
 {
@@ -1280,11 +1333,12 @@ function (identifiers, gene_lookup)
     }
     resolved <- character()
     for (identifier in identifiers) {
-        resolved <- c(resolved, unname(gene_lookup$by_key[[identifier]] %||% 
-            character()), gene_lookup$by_gene_id[[identifier]] %||% 
-            character(), gene_lookup$by_symbol[[identifier]] %||% 
-            character(), gene_lookup$by_feature[[identifier]] %||% 
-            character())
+        key_hit <- unname(gene_lookup$by_key[identifier])
+        if (is.na(key_hit)) key_hit <- character()
+        resolved <- c(resolved, key_hit,
+            gene_lookup$by_gene_id[[identifier]] %||% character(),
+            gene_lookup$by_symbol[[identifier]] %||% character(),
+            gene_lookup$by_feature[[identifier]] %||% character())
     }
     unique(resolved[nzchar(resolved)])
 }
