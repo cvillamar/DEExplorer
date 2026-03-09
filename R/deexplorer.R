@@ -1,28 +1,28 @@
 # Wrapper API intentionally mirrors expected DEExplorer user entrypoint.
 
-normalize_marralm_input <- function(in_marralm, arg_expr = substitute(in_marralm)) {
-  if (is.null(in_marralm)) {
-    stop("`in_marralm` is required and must contain at least one MArrayLM fit.", call. = FALSE)
+normalize_marralm_input <- function(input_MArrayLM, arg_expr = substitute(input_MArrayLM)) {
+  if (is.null(input_MArrayLM)) {
+    stop("`input_MArrayLM` is required and must contain at least one MArrayLM fit.", call. = FALSE)
   }
 
-  if (inherits(in_marralm, "MArrayLM")) {
+  if (inherits(input_MArrayLM, "MArrayLM")) {
     fit_name <- paste(deparse(arg_expr, width.cutoff = 500L), collapse = "")
-    return(list(fits = stats::setNames(list(in_marralm), fit_name)))
+    return(list(fits = stats::setNames(list(input_MArrayLM), fit_name)))
   }
 
-  if (!is.list(in_marralm)) {
-    stop("`in_marralm` must be a MArrayLM object or a list of MArrayLM objects.", call. = FALSE)
+  if (!is.list(input_MArrayLM)) {
+    stop("`input_MArrayLM` must be a MArrayLM object or a list of MArrayLM objects.", call. = FALSE)
   }
 
-  is_fit <- vapply(in_marralm, inherits, logical(1), what = "MArrayLM")
+  is_fit <- vapply(input_MArrayLM, inherits, logical(1), what = "MArrayLM")
   if (!all(is_fit)) {
-    flattened_hint <- !is.null(names(in_marralm)) &&
-      anyDuplicated(names(in_marralm)) &&
-      "coefficients" %in% names(in_marralm)
+    flattened_hint <- !is.null(names(input_MArrayLM)) &&
+      anyDuplicated(names(input_MArrayLM)) &&
+      "coefficients" %in% names(input_MArrayLM)
     if (flattened_hint) {
-      starts <- which(names(in_marralm) == "coefficients")
-      ends <- c(starts[-1L] - 1L, length(in_marralm))
-      chunks <- Map(function(start, end) in_marralm[start:end], starts, ends)
+      starts <- which(names(input_MArrayLM) == "coefficients")
+      ends <- c(starts[-1L] - 1L, length(input_MArrayLM))
+      chunks <- Map(function(start, end) input_MArrayLM[start:end], starts, ends)
 
       can_recover <- length(chunks) >= 1L &&
         all(vapply(chunks, function(chunk) {
@@ -37,7 +37,7 @@ normalize_marralm_input <- function(in_marralm, arg_expr = substitute(in_marralm
         names(recovered) <- paste0("fit", seq_along(recovered))
         warning(
           paste0(
-            "`in_marralm` looked like flattened `c(efit, efit2, ...)` input. ",
+            "`input_MArrayLM` looked like flattened `c(efit, efit2, ...)` input. ",
             "Recovered fits automatically, but `list(efit = efit, efit2 = efit2)` is preferred."
           ),
           call. = FALSE
@@ -45,95 +45,61 @@ normalize_marralm_input <- function(in_marralm, arg_expr = substitute(in_marralm
         return(list(fits = recovered))
       }
     }
-    stop("Every element of `in_marralm` must inherit from limma::MArrayLM.", call. = FALSE)
+    stop("Every element of `input_MArrayLM` must inherit from limma::MArrayLM.", call. = FALSE)
   }
 
-  fit_names <- names(in_marralm)
+  fit_names <- names(input_MArrayLM)
   if (is.null(fit_names)) {
-    fit_names <- rep("", length(in_marralm))
+    fit_names <- rep("", length(input_MArrayLM))
   }
   missing_names <- is_missing_string(fit_names)
-  fit_names[missing_names] <- paste0("fit", seq_along(in_marralm))[missing_names]
+  fit_names[missing_names] <- paste0("fit", seq_along(input_MArrayLM))[missing_names]
   fit_names <- make.unique(fit_names)
-  names(in_marralm) <- fit_names
+  names(input_MArrayLM) <- fit_names
 
-  list(fits = in_marralm)
+  list(fits = input_MArrayLM)
 }
 
-normalize_gsea_input <- function(in_gsea) {
+normalize_gsea_files_input <- function(input_gsea_files) {
   out <- list(
-    fgsea_dir = NULL,
-    msigdb_genesets = NULL,
-    msigdb_path = NULL
+    fgsea_files = NULL,
+    msigdb_genesets = NULL
   )
 
-  if (is.null(in_gsea)) {
+  if (is.null(input_gsea_files)) {
     return(out)
   }
 
-  if (is.data.frame(in_gsea)) {
-    out$msigdb_genesets <- in_gsea
+  if (is.character(input_gsea_files)) {
+    out$fgsea_files <- input_gsea_files
     return(out)
   }
 
-  if (is.character(in_gsea) && length(in_gsea) == 1L) {
-    gsea_path <- normalizePath(in_gsea, winslash = "/", mustWork = FALSE)
-    if (dir.exists(gsea_path)) {
-      out$fgsea_dir <- gsea_path
-      return(out)
-    }
-    if (file.exists(gsea_path) && grepl("\\.rds$", gsea_path, ignore.case = TRUE)) {
-      out$msigdb_path <- gsea_path
-      return(out)
-    }
-    stop("`in_gsea` path must point to a directory with fGSEA TSV files or an `.rds` geneset file.", call. = FALSE)
-  }
-
-  if (is.list(in_gsea)) {
-    pick <- function(x, key) {
-      if (is.null(names(x)) || !key %in% names(x)) {
-        return(NULL)
+  if (is.list(input_gsea_files)) {
+    if (!is.null(names(input_gsea_files))) {
+      pick <- function(x, key) {
+        if (!key %in% names(x)) return(NULL)
+        x[[key]]
       }
-      x[[key]]
-    }
-
-    has_config_names <- !is.null(names(in_gsea)) &&
-      any(names(in_gsea) %in% c("fgsea_dir", "fgsea", "msigdb_path", "msigdb_genesets", "genesets", "msigdb"))
-    if (has_config_names) {
-      fgsea_dir <- pick(in_gsea, "fgsea_dir") %||% pick(in_gsea, "fgsea")
-      msigdb_genesets <- pick(in_gsea, "msigdb_genesets") %||% pick(in_gsea, "genesets") %||% pick(in_gsea, "msigdb")
-      msigdb_path <- pick(in_gsea, "msigdb_path")
-
-      if (!is.null(fgsea_dir)) {
-        fgsea_dir <- normalizePath(as.character(fgsea_dir)[[1L]], winslash = "/", mustWork = FALSE)
-        if (!dir.exists(fgsea_dir)) {
-          stop("`in_gsea$fgsea_dir` does not exist.", call. = FALSE)
-        }
+      out$fgsea_files <- pick(input_gsea_files, "fgsea_files") %||%
+        pick(input_gsea_files, "fgsea")
+      out$msigdb_genesets <- pick(input_gsea_files, "msigdb_genesets") %||%
+        pick(input_gsea_files, "genesets") %||%
+        pick(input_gsea_files, "msigdb")
+      if (!is.null(out$fgsea_files) || !is.null(out$msigdb_genesets)) {
+        return(out)
       }
-      if (!is.null(msigdb_path)) {
-        msigdb_path <- normalizePath(as.character(msigdb_path)[[1L]], winslash = "/", mustWork = FALSE)
-        if (!file.exists(msigdb_path)) {
-          stop("`in_gsea$msigdb_path` does not exist.", call. = FALSE)
-        }
+      if (all(nzchar(names(input_gsea_files)))) {
+        out$msigdb_genesets <- input_gsea_files
+        return(out)
       }
-
-      out$fgsea_dir <- fgsea_dir
-      out$msigdb_genesets <- msigdb_genesets
-      out$msigdb_path <- msigdb_path
-      return(out)
-    }
-
-    if (!is.null(names(in_gsea)) && all(nzchar(names(in_gsea)))) {
-      out$msigdb_genesets <- in_gsea
-      return(out)
     }
   }
 
   stop(
     paste0(
-      "`in_gsea` must be one of: NULL, a directory path, an .rds path, ",
-      "a geneset data.frame, a named geneset list, or a named config list ",
-      "with `fgsea_dir`/`msigdb_path`/`msigdb_genesets`."
+      "`input_gsea_files` must be one of: NULL, a character vector of fGSEA TSV file paths, ",
+      "or a named list with `fgsea_files` and/or `msigdb_genesets`."
     ),
     call. = FALSE
   )
@@ -141,9 +107,10 @@ normalize_gsea_input <- function(in_gsea) {
 
 #' Build a DEExplorer Shiny app bundle and write ui.R/server.R
 #'
-#' @param in_dgelist `edgeR::DGEList` object.
-#' @param in_marralm One `MArrayLM` or a named list of one or more `MArrayLM` fits.
-#' @param in_gsea Optional fGSEA / geneset input.
+#' @param input_DGEList `edgeR::DGEList` object.
+#' @param input_MArrayLM One `MArrayLM` or a named list of one or more `MArrayLM` fits.
+#' @param input_gsea_files Optional character vector of fGSEA TSV file paths, or a named
+#'   list with `fgsea_files` (character vector) and/or `msigdb_genesets` (named list).
 #' @param out Output folder where `ui.R`, `server.R` and `app-data.rds` are written.
 #' @param title App title.
 #' @param overwrite Overwrite existing generated files.
@@ -156,9 +123,9 @@ normalize_gsea_input <- function(in_gsea) {
 #'
 #' @return Invisible list with generated file paths.
 deexplorer <- function(
-  in_dgelist,
-  in_marralm,
-  in_gsea = NULL,
+  input_DGEList,
+  input_MArrayLM,
+  input_gsea_files = NULL,
   out = ".",
   title = "DEExplorer",
   overwrite = TRUE,
@@ -169,21 +136,20 @@ deexplorer <- function(
   fdr_cutoff = 0.05,
   prior_count = 2
 ) {
-  fits <- normalize_marralm_input(in_marralm = in_marralm, arg_expr = substitute(in_marralm))
-  gsea <- normalize_gsea_input(in_gsea)
+  fits <- normalize_marralm_input(input_MArrayLM = input_MArrayLM, arg_expr = substitute(input_MArrayLM))
+  gsea <- normalize_gsea_files_input(input_gsea_files)
 
   app_dir <- normalizePath(out, winslash = "/", mustWork = FALSE)
 
   call_args <- c(
     list(
-      dge = in_dgelist,
+      dge = input_DGEList,
       app_dir = app_dir,
       title = title,
       overwrite = overwrite,
       launch = launch,
       msigdb_genesets = gsea$msigdb_genesets,
-      msigdb_path = gsea$msigdb_path,
-      fgsea_dir = gsea$fgsea_dir,
+      fgsea_files = gsea$fgsea_files,
       sample_id_col = sample_id_col,
       gene_id_col = gene_id_col,
       gene_symbol_col = gene_symbol_col,

@@ -100,6 +100,45 @@ function (dge, gene_df, prior_count)
     rownames(lcpm) <- gene_df$gene_key
     list(counts = counts, cpm = cpm, lcpm = lcpm)
 }
+build_fgsea_barplot <-
+function (fgsea_df, n = 10L)
+{
+    shiny::validate(shiny::need(
+        !is.null(fgsea_df) && nrow(fgsea_df) > 0L,
+        "No fGSEA results available for this contrast."
+    ))
+    fgsea_df <- fgsea_df[order(-abs(fgsea_df$NES)), , drop = FALSE]
+    fgsea_df <- utils::head(fgsea_df, n)
+    fgsea_df$short_pathway <- ifelse(
+        nchar(fgsea_df$pathway) > 50L,
+        paste0(substr(fgsea_df$pathway, 1L, 47L), "..."),
+        fgsea_df$pathway
+    )
+    fgsea_df$neg_log10_padj <- -log10(pmax(fgsea_df$padj, .Machine$double.xmin))
+    fgsea_df$short_pathway <- factor(fgsea_df$short_pathway,
+        levels = rev(fgsea_df$short_pathway))
+    plotly::layout(
+        plotly::plot_ly(
+            data = fgsea_df, x = ~NES, y = ~short_pathway,
+            type = "bar", orientation = "h",
+            marker = list(
+                color = ~neg_log10_padj,
+                colorscale = list(c(0, "#b0bec5"), c(0.5, "#e57373"), c(1, "#b71c1c")),
+                colorbar = list(title = "-log10(padj)", len = 0.6),
+                line = list(width = 0)
+            ),
+            text = ~paste0("<b>", pathway, "</b><br>",
+                           "NES: ", format_number(NES), "<br>",
+                           "padj: ", format_pvalue(padj)),
+            hoverinfo = "text"
+        ),
+        title = list(text = "Top fGSEA Enrichment (by |NES|)", font = list(size = 13)),
+        xaxis = list(title = "NES", zeroline = TRUE,
+            zerolinecolor = "#999999", zerolinewidth = 1),
+        yaxis = list(title = ""),
+        margin = list(l = 200)
+    )
+}
 build_fgsea_summary <-
 function (fgsea_row) 
 {
@@ -401,29 +440,29 @@ function (...)
     list(fits = fits, fit_names = fit_names)
 }
 create_deexplorer_bundle <-
-function (dge, ..., msigdb_genesets = NULL, msigdb_path = NULL,
-    fgsea_dir = NULL, sample_id_col = "Sample", gene_id_col = "ENSEMBL",
+function (dge, ..., msigdb_genesets = NULL, fgsea_files = NULL,
+    sample_id_col = "Sample", gene_id_col = "ENSEMBL",
     gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05, prior_count = 2)
 {
     validate_dge_input(dge, sample_id_col = sample_id_col)
     fit_info <- collect_fit_inputs(...)
     for (fit_index in seq_along(fit_info$fits)) {
-        validate_fit_input(fit = fit_info$fits[[fit_index]], 
-            fit_name = fit_info$fit_names[[fit_index]], dge = dge, 
+        validate_fit_input(fit = fit_info$fits[[fit_index]],
+            fit_name = fit_info$fit_names[[fit_index]], dge = dge,
             gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col)
     }
-    gene_df <- build_gene_annotation(dge = dge, gene_id_col = gene_id_col, 
+    gene_df <- build_gene_annotation(dge = dge, gene_id_col = gene_id_col,
         gene_symbol_col = gene_symbol_col)
     gene_lookup <- build_gene_lookup(gene_df)
     sample_df <- build_sample_annotation(dge = dge, sample_id_col = sample_id_col)
-    matrices <- build_expression_matrices(dge = dge, gene_df = gene_df, 
+    matrices <- build_expression_matrices(dge = dge, gene_df = gene_df,
         prior_count = prior_count)
     pca <- build_pca_payload(lcpm = matrices$lcpm, sample_df = sample_df)
-    de_payload <- build_de_payload(fits = fit_info$fits, fit_names = fit_info$fit_names, 
+    de_payload <- build_de_payload(fits = fit_info$fits, fit_names = fit_info$fit_names,
         gene_df = gene_df, gene_lookup = gene_lookup, fdr_cutoff = fdr_cutoff)
-    msigdb_genesets <- read_msigdb_genesets(msigdb_genesets = msigdb_genesets, 
-        msigdb_path = msigdb_path)
-    fgsea_results <- read_fgsea_results(fgsea_dir = fgsea_dir, 
+    msigdb_genesets <- read_msigdb_genesets(msigdb_genesets = msigdb_genesets,
+        msigdb_path = NULL)
+    fgsea_results <- read_fgsea_results(fgsea_files = fgsea_files,
         contrast_names = de_payload$contrast_catalog$contrast)
     bundle <- list(counts = matrices$counts, cpm = matrices$cpm, 
         lcpm = matrices$lcpm, sample_df = sample_df, gene_df = gene_df, 
@@ -654,6 +693,33 @@ function (bundle)
                   shiny::div(class = "deexplorer-note", "Choose an MSigDB gene set to inspect precomputed enrichment for the active contrast.")))
             }
             build_fgsea_summary(fgsea_hit())
+        })
+        shiny::observeEvent(current_contrast_row(), {
+            contrast_row <- current_contrast_row()
+            if (!nrow(contrast_row)) return(invisible(NULL))
+            contrast_name <- first_or(contrast_row$contrast, "")
+            fgsea_df <- bundle$fgsea[[contrast_name]]
+            collections <- if (!is.null(fgsea_df) && nrow(fgsea_df)) {
+                sort(unique(fgsea_df$collection))
+            } else {
+                character()
+            }
+            shiny::updateSelectInput(session, "fgsea_collection",
+                choices = collections,
+                selected = if (length(collections)) collections[[1L]] else "")
+        })
+        output$fgsea_barplot <- plotly::renderPlotly({
+            contrast_row <- current_contrast_row()
+            shiny::validate(shiny::need(nrow(contrast_row) > 0L,
+                "Select a contrast to show fGSEA results."))
+            contrast_name <- first_or(contrast_row$contrast, "")
+            fgsea_df <- bundle$fgsea[[contrast_name]]
+            collection <- input$fgsea_collection
+            if (!is.null(collection) && nzchar(collection) &&
+                !is.null(fgsea_df) && "collection" %in% colnames(fgsea_df)) {
+                fgsea_df <- fgsea_df[fgsea_df$collection == collection, , drop = FALSE]
+            }
+            build_fgsea_barplot(fgsea_df)
         })
         output$de_table <- DT::renderDT({
             de_df <- filtered_table()
@@ -896,7 +962,10 @@ function ()
                 rows = 8, placeholder = "STAT1\nCXCL8\nTFRC"),
             shiny::actionButton("reset_manual_genes", "Clear gene list"),
             shiny::hr(), shiny::uiOutput("selection_summary"),
-            shiny::uiOutput("fgsea_summary"))), shiny::column(width = 9,
+            shiny::uiOutput("fgsea_summary"),
+            shiny::hr(),
+            shiny::selectInput("fgsea_collection", "fGSEA collection",
+                choices = character()))), shiny::column(width = 9,
         shiny::fluidRow(shiny::column(width = 6, shiny::div(class = "deexplorer-card",
             plotly::plotlyOutput("ma_plot", height = "410px"))),
             shiny::column(width = 6, shiny::div(class = "deexplorer-card",
@@ -907,6 +976,9 @@ function ()
             shiny::div(class = "deexplorer-card", shiny::uiOutput("selected_gene_summary")),
             shiny::div(class = "deexplorer-card", plotly::plotlyOutput("gene_boxplot",
                 height = "310px")))),
+        shiny::fluidRow(shiny::column(width = 12,
+            shiny::div(class = "deexplorer-card",
+                plotly::plotlyOutput("fgsea_barplot", height = "380px")))),
         shiny::fluidRow(shiny::column(width = 12,
             shiny::div(class = "deexplorer-card", shiny::uiOutput("gene_function_text")))),
         shiny::fluidRow(shiny::column(width = 4,
@@ -1266,14 +1338,9 @@ function (bundle, gene_key, group_col)
     expr_df
 }
 read_fgsea_results <-
-function (fgsea_dir, contrast_names) 
+function (fgsea_files, contrast_names)
 {
-    if (is.null(fgsea_dir)) {
-        return(list())
-    }
-    fgsea_files <- list.files(fgsea_dir, pattern = "^fGSEA_.*\\.tsv$", 
-        full.names = TRUE)
-    if (!length(fgsea_files)) {
+    if (is.null(fgsea_files) || !length(fgsea_files)) {
         return(list())
     }
     contrast_names <- unique(as.character(contrast_names))
@@ -1344,12 +1411,12 @@ function (identifiers, gene_lookup)
 }
 run_deexplorer_app <-
 function (dge, ..., title = "DEExplorer", msigdb_genesets = NULL,
-    msigdb_path = NULL, fgsea_dir = NULL, sample_id_col = "Sample",
+    fgsea_files = NULL, sample_id_col = "Sample",
     gene_id_col = "ENSEMBL", gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05,
     prior_count = 2, launch.browser = interactive())
 {
     bundle <- create_deexplorer_bundle(dge = dge, ..., msigdb_genesets = msigdb_genesets,
-        msigdb_path = msigdb_path, fgsea_dir = fgsea_dir, sample_id_col = sample_id_col,
+        fgsea_files = fgsea_files, sample_id_col = sample_id_col,
         gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col,
         fdr_cutoff = fdr_cutoff, prior_count = prior_count)
     shiny::shinyApp(ui = deexplorer_ui(title = title), server = deexplorer_server(bundle), 
@@ -1542,22 +1609,22 @@ function (app_dir, title)
 write_deexplorer_app <-
 function (dge, ..., app_dir = "inst/shiny/deexplorer", title = "DEExplorer",
     overwrite = FALSE, launch = FALSE, msigdb_genesets = NULL,
-    msigdb_path = NULL, fgsea_dir = NULL, sample_id_col = "Sample",
+    fgsea_files = NULL, sample_id_col = "Sample",
     gene_id_col = "ENSEMBL", gene_symbol_col = "SYMBOL", fdr_cutoff = 0.05,
     prior_count = 2)
 {
     app_dir <- normalizePath(app_dir, winslash = "/", mustWork = FALSE)
     dir.create(app_dir, recursive = TRUE, showWarnings = FALSE)
-    target_files <- file.path(app_dir, c("ui.R", "server.R", 
+    target_files <- file.path(app_dir, c("ui.R", "server.R",
         "app-data.rds"))
     existing_files <- file.exists(target_files)
     if (any(existing_files) && !isTRUE(overwrite)) {
-        stop(sprintf("Refusing to overwrite existing files in `%s`. Re-run with `overwrite = TRUE` if replacement is intended.", 
+        stop(sprintf("Refusing to overwrite existing files in `%s`. Re-run with `overwrite = TRUE` if replacement is intended.",
             app_dir), call. = FALSE)
     }
-    bundle <- create_deexplorer_bundle(dge = dge, ..., msigdb_genesets = msigdb_genesets, 
-        msigdb_path = msigdb_path, fgsea_dir = fgsea_dir, sample_id_col = sample_id_col, 
-        gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col, 
+    bundle <- create_deexplorer_bundle(dge = dge, ..., msigdb_genesets = msigdb_genesets,
+        fgsea_files = fgsea_files, sample_id_col = sample_id_col,
+        gene_id_col = gene_id_col, gene_symbol_col = gene_symbol_col,
         fdr_cutoff = fdr_cutoff, prior_count = prior_count)
     saveRDS(bundle, file = file.path(app_dir, "app-data.rds"))
     write_app_wrapper_files(app_dir = app_dir, title = title)
