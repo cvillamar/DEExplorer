@@ -25,9 +25,10 @@ The generated Shiny app has two tabs:
 - Ranked DE table (`topTable()` or `topTreat()`, sorted by test statistic)
 - Interactive MA and volcano plots with FDR coloring (`adj.P.Val < 0.05`)
 - Hover-linked gene summary and log-CPM boxplot
-- Lasso selection + Enrichr support (minimum 30 genes)
-- Manual gene highlighting (one gene per line)
+- Manual gene highlighting (one gene per line; accepts gene symbols or Ensembl IDs)
 - MSigDB geneset highlighting/filtering + precomputed fGSEA summary when available
+- fGSEA enrichment barplot (top 10 pathways by |NES|, colored by FDR) with collection selector
+- Gene annotation panel (Open Targets): protein/gene function description, tissue expression barplot, and disease associations table
 
 ## Installation
 
@@ -57,13 +58,16 @@ dge <- readRDS("example_input/rds/dge.Rds")
 efit <- readRDS("example_input/rds/efit.Rds")
 efit2 <- readRDS("example_input/rds/efit2.Rds")
 
+fgsea_files <- list.files(
+  path = "example_input",
+  pattern = "fGSEA.*",
+  full.names = TRUE
+)
+
 deexplorer(
-  in_dgelist = dge,
-  in_marralm = list(efit = efit, efit2 = efit2),
-  in_gsea = list(
-    fgsea_dir = "example_input",
-    msigdb_path = "example_input/msigdbr_hallmark_go_pathway_genesets_hs.rds"
-  ),
+  input_DGEList = dge,
+  input_MArrayLM = list(efit = efit, efit2 = efit2),
+  input_gsea_files = fgsea_files,
   out = "deexplorer_app",
   title = "This is the first deexplorer app",
   overwrite = TRUE
@@ -78,13 +82,11 @@ shiny::runApp("deexplorer_app")
 
 ## Notes on Inputs
 
-- `in_dgelist` must be an `edgeR::DGEList` with aligned `counts` and `samples`.
-- `in_marralm` should be a list of `MArrayLM` fits from the same `dge` gene universe.
-- `in_gsea` is optional and can be:
-  - a folder with `fGSEA_*.tsv` files
-  - an `.rds` geneset file
-  - a named geneset list/data.frame
-  - a config list containing `fgsea_dir`, `msigdb_path`, and/or `msigdb_genesets`
+- `input_DGEList` must be an `edgeR::DGEList` with aligned `counts` and `samples`.
+- `input_MArrayLM` should be a list of `MArrayLM` fits from the same `dge` gene universe.
+- `input_gsea_files` is optional and can be:
+  - a character vector of fGSEA TSV file paths (e.g. from `list.files(..., pattern = "fGSEA.*", full.names = TRUE)`)
+  - a named list with `fgsea_files` (character vector) and/or `msigdb_genesets` (named list of gene sets)
 
 ## Generated Files
 
