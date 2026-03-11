@@ -235,15 +235,17 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
     row_syms <- ifelse(is_missing_string(row_syms), rownames(mat), row_syms)
     rownames(mat) <- make.unique(row_syms)
     colnames(mat) <- sample_df[colnames(mat), "sample_id"]
-    if (!show_row_labels) rownames(mat) <- rep("", nrow(mat))
-    if (!show_col_labels) colnames(mat) <- rep("", ncol(mat))
-    left_margin <- if (show_row_labels) 120 else 20
-    bottom_margin <- if (show_col_labels) 80 else 20
     hm <- iheatmapr::iheatmap(mat, name = "Z-score",
         cluster_rows = cluster_rows, cluster_cols = cluster_cols,
         colors = grDevices::colorRampPalette(
             c("#2166ac", "#f7f7f7", "#b2182b"))(100),
-        layout = list(margin = list(l = left_margin, b = bottom_margin)))
+        layout = list(margin = list(l = 20, b = 20)))
+    if (show_row_labels) {
+        hm <- iheatmapr::add_row_labels(hm, side = "right")
+    }
+    if (show_col_labels) {
+        hm <- iheatmapr::add_col_labels(hm, side = "bottom")
+    }
     if (!is.null(col_annotations) && length(col_annotations)) {
         col_ann_df <- as.data.frame(col_annotations,
             stringsAsFactors = FALSE, check.names = FALSE)
@@ -252,17 +254,17 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
     }
     if (!is.null(row_geneset_flags) && length(row_geneset_flags)) {
         gs_names <- names(row_geneset_flags)
+        gs_colors <- c("In" = "#000000", "Out" = "#d9d9d9")
         for (i in seq_along(gs_names)) {
             nm <- gs_names[i]
-            single_ann <- data.frame(x = row_geneset_flags[[nm]],
-                stringsAsFactors = FALSE)
-            names(single_ann) <- nm
-            col_spec <- stats::setNames(
-                list(c("In" = "#000000", "Out" = "#d9d9d9")), nm)
-            hm <- iheatmapr::add_row_annotation(hm,
-                annotation = single_ann, side = "right",
-                colors = col_spec,
-                show_colorbar = (i == 1L))
+            hm <- iheatmapr::add_row_groups(hm,
+                groups = row_geneset_flags[[nm]],
+                name = if (i == 1L) "Gene-set" else paste0(".gs_", i),
+                title = nm,
+                colors = gs_colors,
+                show_colorbar = (i == 1L),
+                side = "right",
+                pname = paste0("gs_", i))
         }
     }
     hm
@@ -1110,7 +1112,8 @@ function (bundle)
                 cluster_cols = do_cluster_cols,
                 annotation_col = annotation_col,
                 annotation_row = annotation_row,
-                annotation_colors = ann_colors)
+                annotation_colors = ann_colors,
+                annotation_legend = length(d$row_geneset_flags) == 0L)
             grDevices::dev.off()
         }
         shiny::observeEvent(input$hm_download_png, {
