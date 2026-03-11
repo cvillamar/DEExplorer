@@ -226,7 +226,8 @@ function (gene_df)
 }
 build_iheatmap <-
 function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
-    row_geneset_flags = NULL, cluster_rows = "none", cluster_cols = "none")
+    row_geneset_flags = NULL, cluster_rows = "none", cluster_cols = "none",
+    show_row_labels = TRUE, show_col_labels = TRUE)
 {
     mat <- t(scale(t(lcpm_matrix)))
     mat[!is.finite(mat)] <- 0
@@ -234,11 +235,16 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
     row_syms <- ifelse(is_missing_string(row_syms), rownames(mat), row_syms)
     rownames(mat) <- make.unique(row_syms)
     colnames(mat) <- sample_df[colnames(mat), "sample_id"]
+    y_labels <- if (show_row_labels) rownames(mat) else rep("", nrow(mat))
+    x_labels <- if (show_col_labels) colnames(mat) else rep("", ncol(mat))
+    left_margin <- if (show_row_labels) 120 else 20
+    bottom_margin <- if (show_col_labels) 80 else 20
     hm <- iheatmapr::iheatmap(mat, name = "Z-score",
+        x = x_labels, y = y_labels,
         cluster_rows = cluster_rows, cluster_cols = cluster_cols,
         colors = grDevices::colorRampPalette(
             c("#2166ac", "#f7f7f7", "#b2182b"))(100),
-        layout = list(margin = list(l = 120, b = 80)))
+        layout = list(margin = list(l = left_margin, b = bottom_margin)))
     if (!is.null(col_annotations) && length(col_annotations)) {
         col_ann_df <- as.data.frame(col_annotations,
             stringsAsFactors = FALSE, check.names = FALSE)
@@ -967,22 +973,44 @@ function (bundle)
             selected = bundle$sample_df$sample_id)
         hm_col_ann_choices <- setdiff(colnames(bundle$sample_df),
             c("sample_key", "sample_id", "hover_text"))
+        hm_col_ann_choices <- hm_col_ann_choices[
+            vapply(hm_col_ann_choices, function(col) {
+                !is.numeric(bundle$sample_df[[col]])
+            }, logical(1))]
         shiny::updateCheckboxGroupInput(session, "hm_col_ann",
             choices = hm_col_ann_choices)
-        shiny::updateSelectizeInput(session, "hm_row_genesets",
-            choices = c(stats::setNames("", ""), bundle$msigdb_names),
-            server = TRUE)
-        hm_data <- shiny::eventReactive(input$hm_draw, {
+        hm_selected_genes <- shiny::reactive({
             contrast_key <- input$hm_contrast
             shiny::req(contrast_key, nzchar(contrast_key))
             de_df <- bundle$de_tables[[contrast_key]]
-            shiny::validate(shiny::need(!is.null(de_df) && nrow(de_df) > 0L,
-                "No DE results for selected contrast."))
-            top_n <- as.integer(input$hm_top_n)
+            shiny::req(!is.null(de_df) && nrow(de_df) > 0L)
+            top_n <- input$hm_top_n
             sorted <- de_df[order(de_df$logFC, decreasing = TRUE), , drop = FALSE]
             top_up <- utils::head(sorted, top_n)
             top_down <- utils::tail(sorted, top_n)
-            selected_genes <- unique(c(top_up$gene_key, top_down$gene_key))
+            unique(c(top_up$gene_key, top_down$gene_key))
+        })
+        shiny::observe({
+            selected_genes <- hm_selected_genes()
+            shiny::req(length(selected_genes) > 0L)
+            gene_symbols <- toupper(bundle$gene_df[selected_genes, "symbol"])
+            gene_symbols <- gene_symbols[!is.na(gene_symbols) & nzchar(gene_symbols)]
+            if (length(bundle$msigdb) > 0L && length(gene_symbols) > 0L) {
+                matching <- vapply(bundle$msigdb, function(gs) {
+                    any(toupper(gs) %in% gene_symbols)
+                }, logical(1))
+                filtered_names <- bundle$msigdb_names[matching]
+            } else {
+                filtered_names <- character(0)
+            }
+            shiny::updateSelectizeInput(session, "hm_row_genesets",
+                choices = c(stats::setNames("", ""), filtered_names),
+                server = TRUE)
+        })
+        hm_data <- shiny::reactive({
+            selected_genes <- hm_selected_genes()
+            shiny::validate(shiny::need(length(selected_genes) >= 2L,
+                "No DE results for selected contrast."))
             selected_samples <- input$hm_samples
             if (!length(selected_samples)) {
                 selected_samples <- bundle$sample_df$sample_id
@@ -1007,27 +1035,102 @@ function (bundle)
                 if (length(gs_genes)) {
                     gene_symbols <- bundle$gene_df[selected_genes, "symbol"]
                     flag <- ifelse(toupper(gene_symbols) %in% toupper(gs_genes),
-                        "Yes", "")
+                        "In", "Out")
                     short_name <- sub("^HALLMARK_", "", gs)
                     short_name <- gsub("_", " ", short_name)
                     row_geneset_flags[[short_name]] <- flag
                 }
             }
             list(lcpm = lcpm_sub, sample_keys = sample_keys,
+                selected_genes = selected_genes,
                 col_annotations = col_annotations,
                 row_geneset_flags = row_geneset_flags)
         })
         output$iheatmap_plot <- iheatmapr::renderIheatmap({
             d <- hm_data()
+            shiny::req(d)
+            cluster_rows <- if ("rows" %in% input$hm_cluster) "hclust" else "none"
+            cluster_cols <- if ("columns" %in% input$hm_cluster) "hclust" else "none"
             build_iheatmap(
                 lcpm_matrix = d$lcpm,
                 gene_df = bundle$gene_df,
                 sample_df = bundle$sample_df,
                 col_annotations = d$col_annotations,
                 row_geneset_flags = d$row_geneset_flags,
-                cluster_rows = input$hm_cluster_rows,
-                cluster_cols = input$hm_cluster_cols)
+                cluster_rows = cluster_rows,
+                cluster_cols = cluster_cols,
+                show_row_labels = input$hm_show_row_labels,
+                show_col_labels = input$hm_show_col_labels)
         })
+        hm_static_plot <- function(file, width, height, format) {
+            d <- hm_data()
+            shiny::req(d)
+            mat <- t(scale(t(d$lcpm)))
+            mat[!is.finite(mat)] <- 0
+            row_syms <- bundle$gene_df[rownames(mat), "symbol"]
+            row_syms <- ifelse(is_missing_string(row_syms), rownames(mat), row_syms)
+            rownames(mat) <- make.unique(row_syms)
+            colnames(mat) <- bundle$sample_df[colnames(mat), "sample_id"]
+            colors <- grDevices::colorRampPalette(
+                c("#2166ac", "#f7f7f7", "#b2182b"))(100)
+            do_cluster_rows <- "rows" %in% isolate(input$hm_cluster)
+            do_cluster_cols <- "columns" %in% isolate(input$hm_cluster)
+            if (format == "pdf") {
+                grDevices::pdf(file, width = width, height = height)
+            } else {
+                grDevices::png(file, width = width, height = height,
+                    units = "in", res = 300)
+            }
+            stats::heatmap(mat, col = colors, scale = "none",
+                Rowv = if (do_cluster_rows) NULL else NA,
+                Colv = if (do_cluster_cols) NULL else NA,
+                margins = c(10, 10))
+            grDevices::dev.off()
+        }
+        shiny::observeEvent(input$hm_download_png, {
+            shiny::showModal(shiny::modalDialog(
+                title = "Download Heatmap as PNG",
+                shiny::numericInput("hm_png_width", "Width (inches)", 10, min = 4, max = 30),
+                shiny::numericInput("hm_png_height", "Height (inches)", 8, min = 4, max = 30),
+                footer = shiny::tagList(
+                    shiny::downloadButton("hm_do_download_png", "Download"),
+                    shiny::modalButton("Cancel")
+                )
+            ))
+        })
+        shiny::observeEvent(input$hm_download_pdf, {
+            shiny::showModal(shiny::modalDialog(
+                title = "Download Heatmap as PDF",
+                shiny::numericInput("hm_pdf_width", "Width (inches)", 10, min = 4, max = 30),
+                shiny::numericInput("hm_pdf_height", "Height (inches)", 8, min = 4, max = 30),
+                footer = shiny::tagList(
+                    shiny::downloadButton("hm_do_download_pdf", "Download"),
+                    shiny::modalButton("Cancel")
+                )
+            ))
+        })
+        output$hm_do_download_png <- shiny::downloadHandler(
+            filename = function() paste0("heatmap_", Sys.Date(), ".png"),
+            content = function(file) {
+                w <- input$hm_png_width
+                h <- input$hm_png_height
+                if (is.null(w) || !is.finite(w)) w <- 10
+                if (is.null(h) || !is.finite(h)) h <- 8
+                hm_static_plot(file, width = w, height = h, format = "png")
+                shiny::removeModal()
+            }
+        )
+        output$hm_do_download_pdf <- shiny::downloadHandler(
+            filename = function() paste0("heatmap_", Sys.Date(), ".pdf"),
+            content = function(file) {
+                w <- input$hm_pdf_width
+                h <- input$hm_pdf_height
+                if (is.null(w) || !is.finite(w)) w <- 10
+                if (is.null(h) || !is.finite(h)) h <- 8
+                hm_static_plot(file, width = w, height = h, format = "pdf")
+                shiny::removeModal()
+            }
+        )
     }
 }
 deexplorer_styles <-
@@ -1313,31 +1416,37 @@ function ()
     shiny::tabPanel(title = "Heatmap maker", shiny::fluidRow(shiny::column(width = 3,
         shiny::div(class = "deexplorer-sidebar", shiny::h4("Heatmap Settings"),
             shiny::selectInput("hm_contrast", "Contrast", choices = character()),
-            shiny::selectInput("hm_top_n", "Top up/down genes",
-                choices = c("10" = "10", "25" = "25", "50" = "50"),
-                selected = "25"),
-            shiny::selectInput("hm_cluster_rows", "Cluster rows",
-                choices = c("None" = "none", "Hierarchical" = "hclust"),
-                selected = "none"),
-            shiny::selectInput("hm_cluster_cols", "Cluster columns",
-                choices = c("None" = "none", "Hierarchical" = "hclust"),
-                selected = "none"),
+            shiny::sliderInput("hm_top_n", "Top up/down genes",
+                min = 10, max = 100, value = 20, step = 5),
+            shiny::checkboxGroupInput("hm_cluster", "Clustering",
+                choices = c("Rows" = "rows", "Columns" = "columns"),
+                inline = TRUE),
+            shiny::checkboxInput("hm_show_row_labels", "Show row labels", TRUE),
+            shiny::checkboxInput("hm_show_col_labels", "Show column labels", TRUE),
             shiny::hr(),
             shiny::h4("Columns"),
-            shiny::checkboxGroupInput("hm_samples", "Samples to show",
-                choices = character()),
+            shiny::tags$details(
+                shiny::tags$summary(shiny::tags$strong("Samples to show")),
+                shiny::checkboxGroupInput("hm_samples", NULL,
+                    choices = character())),
             shiny::hr(),
             shiny::h4("Annotations"),
-            shiny::checkboxGroupInput("hm_col_ann", "Column annotations (metadata)",
-                choices = character()),
+            shiny::tags$details(
+                shiny::tags$summary(shiny::tags$strong("Column annotations (metadata)")),
+                shiny::checkboxGroupInput("hm_col_ann", NULL,
+                    choices = character())),
             shiny::selectizeInput("hm_row_genesets",
                 "Row annotations (MSigDB gene sets)",
                 choices = NULL, multiple = TRUE,
                 options = list(
                     placeholder = "Type a gene set name",
                     respect_word_boundaries = FALSE)),
-            shiny::actionButton("hm_draw", "Draw heatmap",
-                class = "btn-primary", style = "width: 100%;"))),
+            shiny::hr(),
+            shiny::h4("Download"),
+            shiny::actionButton("hm_download_png", "Download PNG",
+                class = "btn-outline-primary", style = "width: 100%; margin-bottom: 6px;"),
+            shiny::actionButton("hm_download_pdf", "Download PDF",
+                class = "btn-outline-primary", style = "width: 100%;"))),
         shiny::column(width = 9,
             shiny::div(class = "deexplorer-card",
                 iheatmapr::iheatmaprOutput("iheatmap_plot",
