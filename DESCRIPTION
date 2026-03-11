@@ -16,6 +16,7 @@ Imports:
     DT,
     edgeR,
     httr2,
+    iheatmapr,
     jsonlite,
     limma,
     plotly,

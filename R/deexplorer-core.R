@@ -224,8 +224,37 @@ function (gene_df)
         by_feature = feature_lookup, first_by_symbol = first_entry(symbol_lookup), 
         first_by_gene_id = first_entry(gene_id_lookup), first_by_feature = first_entry(feature_lookup))
 }
+build_iheatmap <-
+function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
+    row_geneset_flags = NULL, cluster_rows = "none", cluster_cols = "none")
+{
+    mat <- t(scale(t(lcpm_matrix)))
+    mat[!is.finite(mat)] <- 0
+    row_syms <- gene_df[rownames(mat), "symbol"]
+    row_syms <- ifelse(is_missing_string(row_syms), rownames(mat), row_syms)
+    rownames(mat) <- make.unique(row_syms)
+    colnames(mat) <- sample_df[colnames(mat), "sample_id"]
+    hm <- iheatmapr::iheatmap(mat, name = "Z-score",
+        cluster_rows = cluster_rows, cluster_cols = cluster_cols,
+        colors = grDevices::colorRampPalette(
+            c("#2166ac", "#f7f7f7", "#b2182b"))(100),
+        layout = list(margin = list(l = 120, b = 80)))
+    if (!is.null(col_annotations) && length(col_annotations)) {
+        col_ann_df <- as.data.frame(col_annotations,
+            stringsAsFactors = FALSE, check.names = FALSE)
+        hm <- iheatmapr::add_col_annotation(hm,
+            annotation = col_ann_df, side = "bottom")
+    }
+    if (!is.null(row_geneset_flags) && length(row_geneset_flags)) {
+        row_ann_df <- as.data.frame(row_geneset_flags,
+            stringsAsFactors = FALSE, check.names = FALSE)
+        hm <- iheatmapr::add_row_annotation(hm,
+            annotation = row_ann_df, side = "right")
+    }
+    hm
+}
 build_method_label <-
-function (method, fit) 
+function (method, fit)
 {
     if (identical(method, "treat")) {
         paste0("treat (|logFC| > ", formatC(fit$treat.lfc[[1]], 
@@ -929,6 +958,76 @@ function (bundle)
                 columns = numeric_cols, digits = 2
             )
         })
+        shiny::updateSelectInput(session, "hm_contrast",
+            choices = stats::setNames(bundle$contrast_catalog$contrast_key,
+                bundle$contrast_catalog$contrast),
+            selected = first_or(bundle$contrast_catalog$contrast_key))
+        shiny::updateCheckboxGroupInput(session, "hm_samples",
+            choices = bundle$sample_df$sample_id,
+            selected = bundle$sample_df$sample_id)
+        hm_col_ann_choices <- setdiff(colnames(bundle$sample_df),
+            c("sample_key", "sample_id", "hover_text"))
+        shiny::updateCheckboxGroupInput(session, "hm_col_ann",
+            choices = hm_col_ann_choices)
+        shiny::updateSelectizeInput(session, "hm_row_genesets",
+            choices = c(stats::setNames("", ""), bundle$msigdb_names),
+            server = TRUE)
+        hm_data <- shiny::eventReactive(input$hm_draw, {
+            contrast_key <- input$hm_contrast
+            shiny::req(contrast_key, nzchar(contrast_key))
+            de_df <- bundle$de_tables[[contrast_key]]
+            shiny::validate(shiny::need(!is.null(de_df) && nrow(de_df) > 0L,
+                "No DE results for selected contrast."))
+            top_n <- as.integer(input$hm_top_n)
+            sorted <- de_df[order(de_df$logFC, decreasing = TRUE), , drop = FALSE]
+            top_up <- utils::head(sorted, top_n)
+            top_down <- utils::tail(sorted, top_n)
+            selected_genes <- unique(c(top_up$gene_key, top_down$gene_key))
+            selected_samples <- input$hm_samples
+            if (!length(selected_samples)) {
+                selected_samples <- bundle$sample_df$sample_id
+            }
+            sample_keys <- bundle$sample_df$sample_key[
+                bundle$sample_df$sample_id %in% selected_samples]
+            sample_keys <- intersect(sample_keys, colnames(bundle$lcpm))
+            shiny::validate(shiny::need(length(sample_keys) >= 2L,
+                "Select at least 2 samples."))
+            lcpm_sub <- bundle$lcpm[selected_genes, sample_keys, drop = FALSE]
+            col_annotations <- list()
+            for (ann in input$hm_col_ann) {
+                if (ann %in% colnames(bundle$sample_df)) {
+                    col_annotations[[ann]] <- as.character(
+                        bundle$sample_df[sample_keys, ann])
+                }
+            }
+            row_geneset_flags <- list()
+            for (gs in input$hm_row_genesets) {
+                if (!nzchar(gs)) next
+                gs_genes <- bundle$msigdb[[gs]]
+                if (length(gs_genes)) {
+                    gene_symbols <- bundle$gene_df[selected_genes, "symbol"]
+                    flag <- ifelse(toupper(gene_symbols) %in% toupper(gs_genes),
+                        "Yes", "")
+                    short_name <- sub("^HALLMARK_", "", gs)
+                    short_name <- gsub("_", " ", short_name)
+                    row_geneset_flags[[short_name]] <- flag
+                }
+            }
+            list(lcpm = lcpm_sub, sample_keys = sample_keys,
+                col_annotations = col_annotations,
+                row_geneset_flags = row_geneset_flags)
+        })
+        output$iheatmap_plot <- iheatmapr::renderIheatmap({
+            d <- hm_data()
+            build_iheatmap(
+                lcpm_matrix = d$lcpm,
+                gene_df = bundle$gene_df,
+                sample_df = bundle$sample_df,
+                col_annotations = d$col_annotations,
+                row_geneset_flags = d$row_geneset_flags,
+                cluster_rows = input$hm_cluster_rows,
+                cluster_cols = input$hm_cluster_cols)
+        })
     }
 }
 deexplorer_styles <-
@@ -961,7 +1060,7 @@ function (title = "DEExplorer")
     shiny::fluidPage(theme = deexplorer_theme(), deexplorer_styles(), 
         shiny::div(class = "deexplorer-title", shiny::titlePanel(title)), 
         shiny::div(class = "deexplorer-note", "This app assumes the supplied DGEList has already been filtered to the analysis universe and that limma fits were computed on the same genes."), 
-        shiny::tabsetPanel(id = "main_tabs", pca_tab_ui(), deg_tab_ui()))
+        shiny::tabsetPanel(id = "main_tabs", pca_tab_ui(), deg_tab_ui(), heatmap_tab_ui()))
 }
 deg_tab_ui <-
 function ()
@@ -1205,8 +1304,44 @@ function (event)
 safe_event_data <-
 function (event, source) 
 {
-    tryCatch(suppressWarnings(plotly::event_data(event, source = source)), 
+    tryCatch(suppressWarnings(plotly::event_data(event, source = source)),
         error = function(...) NULL)
+}
+heatmap_tab_ui <-
+function ()
+{
+    shiny::tabPanel(title = "Heatmap maker", shiny::fluidRow(shiny::column(width = 3,
+        shiny::div(class = "deexplorer-sidebar", shiny::h4("Heatmap Settings"),
+            shiny::selectInput("hm_contrast", "Contrast", choices = character()),
+            shiny::selectInput("hm_top_n", "Top up/down genes",
+                choices = c("10" = "10", "25" = "25", "50" = "50"),
+                selected = "25"),
+            shiny::selectInput("hm_cluster_rows", "Cluster rows",
+                choices = c("None" = "none", "Hierarchical" = "hclust"),
+                selected = "none"),
+            shiny::selectInput("hm_cluster_cols", "Cluster columns",
+                choices = c("None" = "none", "Hierarchical" = "hclust"),
+                selected = "none"),
+            shiny::hr(),
+            shiny::h4("Columns"),
+            shiny::checkboxGroupInput("hm_samples", "Samples to show",
+                choices = character()),
+            shiny::hr(),
+            shiny::h4("Annotations"),
+            shiny::checkboxGroupInput("hm_col_ann", "Column annotations (metadata)",
+                choices = character()),
+            shiny::selectizeInput("hm_row_genesets",
+                "Row annotations (MSigDB gene sets)",
+                choices = NULL, multiple = TRUE,
+                options = list(
+                    placeholder = "Type a gene set name",
+                    respect_word_boundaries = FALSE)),
+            shiny::actionButton("hm_draw", "Draw heatmap",
+                class = "btn-primary", style = "width: 100%;"))),
+        shiny::column(width = 9,
+            shiny::div(class = "deexplorer-card",
+                iheatmapr::iheatmaprOutput("iheatmap_plot",
+                    height = "700px")))))
 }
 infer_fit_method <-
 function (fit) 
