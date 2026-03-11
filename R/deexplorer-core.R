@@ -235,12 +235,11 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
     row_syms <- ifelse(is_missing_string(row_syms), rownames(mat), row_syms)
     rownames(mat) <- make.unique(row_syms)
     colnames(mat) <- sample_df[colnames(mat), "sample_id"]
-    y_labels <- if (show_row_labels) rownames(mat) else rep("", nrow(mat))
-    x_labels <- if (show_col_labels) colnames(mat) else rep("", ncol(mat))
+    if (!show_row_labels) rownames(mat) <- rep("", nrow(mat))
+    if (!show_col_labels) colnames(mat) <- rep("", ncol(mat))
     left_margin <- if (show_row_labels) 120 else 20
     bottom_margin <- if (show_col_labels) 80 else 20
     hm <- iheatmapr::iheatmap(mat, name = "Z-score",
-        x = x_labels, y = y_labels,
         cluster_rows = cluster_rows, cluster_cols = cluster_cols,
         colors = grDevices::colorRampPalette(
             c("#2166ac", "#f7f7f7", "#b2182b"))(100),
@@ -252,10 +251,19 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
             annotation = col_ann_df, side = "bottom")
     }
     if (!is.null(row_geneset_flags) && length(row_geneset_flags)) {
-        row_ann_df <- as.data.frame(row_geneset_flags,
-            stringsAsFactors = FALSE, check.names = FALSE)
-        hm <- iheatmapr::add_row_annotation(hm,
-            annotation = row_ann_df, side = "right")
+        gs_names <- names(row_geneset_flags)
+        for (i in seq_along(gs_names)) {
+            nm <- gs_names[i]
+            single_ann <- data.frame(x = row_geneset_flags[[nm]],
+                stringsAsFactors = FALSE)
+            names(single_ann) <- nm
+            col_spec <- stats::setNames(
+                list(c("In" = "#000000", "Out" = "#d9d9d9")), nm)
+            hm <- iheatmapr::add_row_annotation(hm,
+                annotation = single_ann, side = "right",
+                colors = col_spec,
+                show_colorbar = (i == 1L))
+        }
     }
     hm
 }
@@ -1075,16 +1083,34 @@ function (bundle)
                 c("#2166ac", "#f7f7f7", "#b2182b"))(100)
             do_cluster_rows <- "rows" %in% isolate(input$hm_cluster)
             do_cluster_cols <- "columns" %in% isolate(input$hm_cluster)
+            annotation_col <- NULL
+            if (length(d$col_annotations)) {
+                annotation_col <- data.frame(d$col_annotations,
+                    row.names = colnames(mat),
+                    stringsAsFactors = FALSE, check.names = FALSE)
+            }
+            annotation_row <- NULL
+            if (length(d$row_geneset_flags)) {
+                annotation_row <- data.frame(d$row_geneset_flags,
+                    row.names = rownames(mat),
+                    stringsAsFactors = FALSE, check.names = FALSE)
+            }
+            ann_colors <- list()
+            for (nm in names(d$row_geneset_flags)) {
+                ann_colors[[nm]] <- c("In" = "#000000", "Out" = "#d9d9d9")
+            }
             if (format == "pdf") {
                 grDevices::pdf(file, width = width, height = height)
             } else {
                 grDevices::png(file, width = width, height = height,
                     units = "in", res = 300)
             }
-            stats::heatmap(mat, col = colors, scale = "none",
-                Rowv = if (do_cluster_rows) NULL else NA,
-                Colv = if (do_cluster_cols) NULL else NA,
-                margins = c(10, 10))
+            pheatmap::pheatmap(mat, color = colors, scale = "none",
+                cluster_rows = do_cluster_rows,
+                cluster_cols = do_cluster_cols,
+                annotation_col = annotation_col,
+                annotation_row = annotation_row,
+                annotation_colors = ann_colors)
             grDevices::dev.off()
         }
         shiny::observeEvent(input$hm_download_png, {
