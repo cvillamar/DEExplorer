@@ -8,18 +8,6 @@ function (x, y)
         x
     }
 }
-add_gene_trace <-
-function (plot_object, data, x_values, y_values, name, marker, 
-    legendgroup = name) 
-{
-    if (!nrow(data)) {
-        return(plot_object)
-    }
-    plotly::add_markers(plot_object, data = data, x = x_values, 
-        y = y_values, name = name, legendgroup = legendgroup, 
-        text = ~hover_text, hoverinfo = "text", customdata = ~gene_key, 
-        marker = marker)
-}
 build_de_payload <-
 function (fits, fit_names, gene_df, gene_lookup, fdr_cutoff) 
 {
@@ -62,24 +50,25 @@ function (de_df, x_col, y_col, title, source_id, highlighted_gene_keys = charact
     xf <- stats::as.formula(paste0("~`", x_col, "`"))
     yf <- stats::as.formula(paste0("~`", y_col, "`"))
     p <- plotly::plot_ly(source = source_id)
-    p <- add_gene_trace(p, data = layers$nonsig, x_values = xf,
-        y_values = yf, name = "FDR >= 0.05", marker = list(color = bg_nonsig_color,
-        size = 6))
-    p <- add_gene_trace(p, data = layers$sig, x_values = xf,
-        y_values = yf, name = "FDR < 0.05", marker = list(color = bg_sig_color,
-        size = 7))
-    p <- add_gene_trace(p, data = geneset_data, x_values = xf,
-        y_values = yf, name = "Gene set", marker = list(color = "#e76f51",
-        size = 9, opacity = 0.85))
-    p <- add_gene_trace(p, data = layers$leading, x_values = xf,
-        y_values = yf, name = "Leading edge", marker = list(color = "rgba(255, 255, 255, 0)",
-        size = 12, symbol = "diamond-open", line = list(color = "#8d6a00",
-            width = 3)))
-    if (nrow(layers$active)) {
-        p <- add_gene_trace(p, data = layers$active, x_values = xf,
-            y_values = yf, name = "Active gene", marker = list(color = "#0b6e4f",
-            size = 13, symbol = "star"))
+    add_fixed_trace <- function(p, data, x_col, y_col, name, marker,
+                                legendgroup = name) {
+        plotly::add_markers(p, x = data[[x_col]], y = data[[y_col]],
+            text = data$hover_text, hoverinfo = "text",
+            customdata = data$gene_key, name = name,
+            legendgroup = legendgroup, marker = marker, inherit = FALSE)
     }
+    p <- add_fixed_trace(p, layers$nonsig, x_col, y_col,
+        "FDR >= 0.05", list(color = bg_nonsig_color, size = 6))
+    p <- add_fixed_trace(p, layers$sig, x_col, y_col,
+        "FDR < 0.05", list(color = bg_sig_color, size = 7))
+    p <- add_fixed_trace(p, geneset_data, x_col, y_col,
+        "Gene set", list(color = "#e76f51", size = 9, opacity = 0.85))
+    p <- add_fixed_trace(p, layers$leading, x_col, y_col,
+        "Leading edge", list(color = "rgba(255, 255, 255, 0)",
+        size = 12, symbol = "diamond-open",
+        line = list(color = "#8d6a00", width = 3)))
+    p <- add_fixed_trace(p, layers$active, x_col, y_col,
+        "Active gene", list(color = "#0b6e4f", size = 13, symbol = "star"))
     p <- plotly::layout(p, title = list(text = title), xaxis = list(title = x_title),
         yaxis = list(title = y_title), legend = list(orientation = "h",
             y = -0.18))
@@ -812,13 +801,13 @@ function (bundle)
                   first_or(contrast_row$contrast, "Unknown contrast")), source_id = "ma_plot",
                 highlighted_gene_keys = selected_geneset_keys(),
                 manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(),
-                active_gene_key = state$active_gene_key, x_title = "AveExpr",
+                active_gene_key = character(), x_title = "AveExpr",
                 y_title = "logFC"), shapes = list(list(type = "line",
                 x0 = min(de_df$AveExpr, na.rm = TRUE), x1 = max(de_df$AveExpr,
                   na.rm = TRUE), y0 = 0, y1 = 0, line = list(color = "#555555",
                   dash = "dash"))))
         }) |> shiny::bindCache(input$contrast_key, input$geneset_name,
-            input$manual_genes, state$active_gene_key)
+            input$manual_genes)
         output$volcano_plot <- plotly::renderPlotly({
             de_df <- current_de_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No differential expression rows are available for this contrast."))
@@ -830,13 +819,44 @@ function (bundle)
                   first_or(contrast_row$contrast, "Unknown contrast")), source_id = "volcano_plot",
                 highlighted_gene_keys = selected_geneset_keys(),
                 manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(),
-                active_gene_key = state$active_gene_key, x_title = "logFC",
+                active_gene_key = character(), x_title = "logFC",
                 y_title = "-log10(P.Value)"), shapes = list(list(type = "line",
                 x0 = 0, x1 = 0, y0 = 0, y1 = max(de_df$neg_log10_p,
                   na.rm = TRUE), line = list(color = "#555555",
                   dash = "dash"))))
         }) |> shiny::bindCache(input$contrast_key, input$geneset_name,
-            input$manual_genes, state$active_gene_key)
+            input$manual_genes)
+        shiny::observe({
+            de_df <- current_de_table()
+            key <- state$active_gene_key
+            ma_proxy <- plotly::plotlyProxy("ma_plot", session)
+            vol_proxy <- plotly::plotlyProxy("volcano_plot", session)
+            if (is.null(key) || !length(key) || !nrow(de_df) ||
+                !key %in% de_df$gene_key) {
+                plotly::plotlyProxyInvoke(ma_proxy, "deleteTraces", 4L)
+                plotly::plotlyProxyInvoke(vol_proxy, "deleteTraces", 4L)
+                return(invisible(NULL))
+            }
+            row <- de_df[de_df$gene_key == key, , drop = FALSE]
+            active_trace <- list(list(
+                x = list(row$AveExpr),
+                y = list(row$logFC),
+                text = list(row$hover_text),
+                customdata = list(list(row$gene_key)),
+                hoverinfo = "text",
+                type = "scatter", mode = "markers",
+                name = "Active gene",
+                marker = list(color = "#0b6e4f", size = 13, symbol = "star"),
+                showlegend = TRUE
+            ))
+            plotly::plotlyProxyInvoke(ma_proxy, "deleteTraces", 4L)
+            plotly::plotlyProxyInvoke(ma_proxy, "addTraces", active_trace)
+            active_trace_vol <- active_trace
+            active_trace_vol[[1L]]$x <- list(row$logFC)
+            active_trace_vol[[1L]]$y <- list(row$neg_log10_p)
+            plotly::plotlyProxyInvoke(vol_proxy, "deleteTraces", 4L)
+            plotly::plotlyProxyInvoke(vol_proxy, "addTraces", active_trace_vol)
+        })
         active_gene_row <- shiny::reactive({
             de_df <- current_de_table()
             if (is.null(state$active_gene_key) || !length(state$active_gene_key) || 
