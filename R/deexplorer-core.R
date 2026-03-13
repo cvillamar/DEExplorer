@@ -258,12 +258,12 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
     }
     n_genes <- nrow(mat)
     n_samples <- ncol(mat)
-    row_px <- if (show_row_labels) 18L else 8L
-    col_px <- if (show_col_labels) 28L else 16L
-    body_h <- max(200L, n_genes * row_px)
-    body_w <- max(200L, n_samples * col_px)
-    total_h <- min(body_h + 200L, 3000L)
-    total_w <- min(body_w + 250L, 1200L)
+    tile_h <- 15L
+    tile_w <- 22L
+    body_h <- max(200L, n_genes * tile_h)
+    body_w <- max(200L, n_samples * tile_w)
+    total_h <- min(body_h + (if (show_col_labels) 200L else 120L), 3000L)
+    total_w <- min(body_w + (if (show_row_labels) 250L else 120L), 1200L)
     rescale_axes <- function(axes, total_px, main_class, ref_px = 700) {
         n_ax <- length(axes)
         if (n_ax < 2L) return(axes)
@@ -1173,16 +1173,16 @@ function (bundle)
             n_genes <- length(hm_selected_genes())
             show_rows <- isTRUE(input$hm_show_row_labels)
             show_cols <- isTRUE(input$hm_show_col_labels)
-            row_px <- if (show_rows) 18L else 8L
-            heatmap_body_px <- max(200L, n_genes * row_px)
-            fixed_y_px <- 200L
-            total_h <- min(heatmap_body_px + fixed_y_px, 3000L)
+            tile_h <- 15L
+            tile_w <- 22L
+            body_h <- max(200L, n_genes * tile_h)
+            fixed_y_px <- if (show_cols) 200L else 120L
+            total_h <- min(body_h + fixed_y_px, 3000L)
             n_samples <- length(input$hm_samples)
             if (!n_samples) n_samples <- nrow(bundle$sample_df)
-            col_px <- if (show_cols) 28L else 16L
-            heatmap_body_w <- max(200L, n_samples * col_px)
-            fixed_x_px <- 250L
-            total_w <- min(heatmap_body_w + fixed_x_px, 1200L)
+            body_w <- max(200L, n_samples * tile_w)
+            fixed_x_px <- if (show_rows) 250L else 120L
+            total_w <- min(body_w + fixed_x_px, 1200L)
             iheatmapr::iheatmaprOutput("iheatmap_plot",
                 height = paste0(total_h, "px"),
                 width = paste0(total_w, "px"))
