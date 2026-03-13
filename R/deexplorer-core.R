@@ -256,6 +256,92 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
                 pname = paste0("gs_", i))
         }
     }
+    n_genes <- nrow(mat)
+    row_px <- if (show_row_labels) 18L else 8L
+    body_px <- max(200L, n_genes * row_px)
+    fixed_px <- 200L
+    total_px <- min(body_px + fixed_px, 3000L)
+    gap <- 0.004
+    n_yaxes <- length(hm@yaxes)
+    if (n_yaxes >= 2L) {
+        main_idx <- which(vapply(seq_along(hm@yaxes), function(i) {
+            methods::is(hm@yaxes[[i]], "IheatmapMainY")
+        }, logical(1)))
+        if (length(main_idx) == 1L) {
+            orig_domains <- lapply(seq_along(hm@yaxes), function(i) {
+                list(start = hm@yaxes[[i]]@domain_start,
+                     end   = hm@yaxes[[i]]@domain_end)
+            })
+            above <- which(vapply(seq_along(hm@yaxes), function(i) {
+                orig_domains[[i]]$start >= orig_domains[[main_idx]]$end
+            }, logical(1)))
+            below <- which(vapply(seq_along(hm@yaxes), function(i) {
+                orig_domains[[i]]$end <= orig_domains[[main_idx]]$start
+            }, logical(1)))
+            above_px <- 0
+            for (i in above) {
+                span <- orig_domains[[i]]$end - orig_domains[[i]]$start
+                above_px <- above_px + span * 700 + gap * 700
+            }
+            if (above_px < 40) above_px <- 80
+            below_px <- 0
+            for (i in below) {
+                span <- orig_domains[[i]]$end - orig_domains[[i]]$start
+                below_px <- below_px + span * 700 + gap * 700
+            }
+            if (below_px > 0 && below_px < 30) below_px <- 60
+            above_frac <- above_px / total_px
+            below_frac <- below_px / total_px
+            body_frac <- 1 - above_frac - below_frac
+            if (body_frac < 0.3) {
+                body_frac <- 0.3
+                leftover <- 1 - body_frac
+                total_fixed <- above_frac + below_frac
+                if (total_fixed > 0) {
+                    above_frac <- leftover * above_frac / total_fixed
+                    below_frac <- leftover * below_frac / total_fixed
+                }
+            }
+            if (length(above) > 0L) {
+                above_ord <- above[order(vapply(above, function(i) {
+                    orig_domains[[i]]$start
+                }, numeric(1)))]
+                cursor <- 1 - above_frac
+                total_orig <- sum(vapply(above_ord, function(i) {
+                    orig_domains[[i]]$end - orig_domains[[i]]$start + gap
+                }, numeric(1)))
+                for (i in above_ord) {
+                    orig_span <- orig_domains[[i]]$end - orig_domains[[i]]$start + gap
+                    share <- if (total_orig > 0) orig_span / total_orig else 1 / length(above_ord)
+                    ax_size <- above_frac * share - gap
+                    if (ax_size < gap) ax_size <- gap
+                    hm@yaxes[[i]]@domain_start <- cursor + gap
+                    hm@yaxes[[i]]@domain_end <- cursor + gap + ax_size
+                    cursor <- cursor + gap + ax_size
+                }
+            }
+            hm@yaxes[[main_idx]]@domain_start <- below_frac
+            hm@yaxes[[main_idx]]@domain_end <- 1 - above_frac
+            if (length(below) > 0L) {
+                below_ord <- below[order(vapply(below, function(i) {
+                    orig_domains[[i]]$end
+                }, numeric(1)), decreasing = TRUE)]
+                cursor <- below_frac
+                total_orig <- sum(vapply(below_ord, function(i) {
+                    orig_domains[[i]]$end - orig_domains[[i]]$start + gap
+                }, numeric(1)))
+                for (i in below_ord) {
+                    orig_span <- orig_domains[[i]]$end - orig_domains[[i]]$start + gap
+                    share <- if (total_orig > 0) orig_span / total_orig else 1 / length(below_ord)
+                    ax_size <- below_frac * share - gap
+                    if (ax_size < gap) ax_size <- gap
+                    hm@yaxes[[i]]@domain_end <- cursor - gap
+                    hm@yaxes[[i]]@domain_start <- cursor - gap - ax_size
+                    cursor <- cursor - gap - ax_size
+                }
+            }
+        }
+    }
     hm
 }
 build_method_label <-
@@ -1093,10 +1179,12 @@ function (bundle)
         output$iheatmap_container <- shiny::renderUI({
             n_genes <- length(hm_selected_genes())
             show_rows <- isTRUE(input$hm_show_row_labels)
-            px <- if (show_rows) max(400L, n_genes * 18L) else max(400L, n_genes * 8L)
-            px <- min(px, 3000L)
+            row_px <- if (show_rows) 18L else 8L
+            heatmap_body_px <- max(200L, n_genes * row_px)
+            fixed_px <- 200L
+            total_px <- min(heatmap_body_px + fixed_px, 3000L)
             iheatmapr::iheatmaprOutput("iheatmap_plot",
-                height = paste0(px, "px"))
+                height = paste0(total_px, "px"))
         })
         output$iheatmap_plot <- iheatmapr::renderIheatmap({
             d <- hm_data()
