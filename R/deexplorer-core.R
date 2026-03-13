@@ -1225,7 +1225,17 @@ function ()
         ".deexplorer-download-stack .btn:last-child { margin-bottom: 0; }", 
         ".deexplorer-note { font-size: 0.92rem; color: #4a5568; }", 
         ".deexplorer-metric { margin-bottom: 10px; }", ".tab-content { padding-top: 14px; }", 
-        ".dataTables_wrapper .dataTables_filter input { width: 240px; }", 
+        ".dataTables_wrapper .dataTables_filter input { width: 240px; }",
+        ".plotly.recalculating, .datatables.recalculating, .shiny-html-output.recalculating, .iheatmapr.recalculating { opacity: 0.35 !important; transition: opacity 0.15s; }",
+        ".deexplorer-card { position: relative; }",
+        ".deexplorer-card .recalculating::after {",
+        "  content: ''; position: absolute; top: 50%; left: 50%;",
+        "  width: 28px; height: 28px; margin: -14px 0 0 -14px;",
+        "  border: 3px solid rgba(11,110,79,0.2);",
+        "  border-top-color: #0b6e4f;",
+        "  border-radius: 50%; animation: deex-spin 0.7s linear infinite;",
+        "}",
+        "@keyframes deex-spin { to { transform: rotate(360deg); } }",
         sep = "\n")))
 }
 deexplorer_theme <-
