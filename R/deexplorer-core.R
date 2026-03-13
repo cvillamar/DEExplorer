@@ -778,6 +778,18 @@ function (bundle)
         shiny::observeEvent(input$contrast_key, {
             state$hover_gene_key <- NULL
         })
+        de_table_proxy <- DT::dataTableProxy("de_table")
+        shiny::observe({
+            key <- state$active_gene_key
+            de_df <- filtered_table()
+            if (is.null(key) || !length(key) || !nrow(de_df) ||
+                !key %in% de_df$gene_key) {
+                DT::selectRows(de_table_proxy, NULL)
+                return(invisible(NULL))
+            }
+            row_idx <- which(de_df$gene_key == key)
+            DT::selectRows(de_table_proxy, row_idx)
+        })
         output$pca_plot <- plotly::renderPlotly({
             build_pca_plot(bundle = bundle, x_pc = input$pca_x_pc,
                 y_pc = input$pca_y_pc, color_col = selected_choice(input$pca_color),
@@ -1225,7 +1237,7 @@ function ()
         ".dataTables_wrapper .dataTables_filter input { width: 240px; }",
         ".plotly.recalculating, .datatables.recalculating, .shiny-html-output.recalculating, .iheatmapr.recalculating { opacity: 0.35 !important; transition: opacity 0.15s; }",
         ".deexplorer-card { position: relative; }",
-        ".deexplorer-card .recalculating::after {",
+        ".deexplorer-card:not(.no-spinner) .recalculating::after {",
         "  content: ''; position: absolute; top: 50%; left: 50%;",
         "  width: 28px; height: 28px; margin: -14px 0 0 -14px;",
         "  border: 3px solid rgba(11,110,79,0.2);",
@@ -1277,8 +1289,8 @@ function ()
         shiny::fluidRow(shiny::column(width = 7, shiny::div(class = "deexplorer-card",
             shiny::h4("Ranked Differential Expression Table"),
             DT::DTOutput("de_table"))), shiny::column(width = 5,
-            shiny::div(class = "deexplorer-card", shiny::uiOutput("selected_gene_summary")),
-            shiny::div(class = "deexplorer-card", plotly::plotlyOutput("gene_boxplot",
+            shiny::div(class = "deexplorer-card no-spinner", shiny::uiOutput("selected_gene_summary")),
+            shiny::div(class = "deexplorer-card no-spinner", plotly::plotlyOutput("gene_boxplot",
                 height = "310px")))),
         shiny::fluidRow(shiny::column(width = 12,
             shiny::div(class = "deexplorer-card",
