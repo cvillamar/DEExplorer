@@ -257,93 +257,82 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
         }
     }
     n_genes <- nrow(mat)
+    n_samples <- ncol(mat)
     row_px <- if (show_row_labels) 18L else 8L
-    body_px <- max(200L, n_genes * row_px)
-    fixed_px <- 200L
-    total_px <- min(body_px + fixed_px, 3000L)
-    gap <- 0.004
-    n_yaxes <- length(hm@yaxes)
-    if (n_yaxes >= 2L) {
-        main_idx <- which(vapply(seq_along(hm@yaxes), function(i) {
-            methods::is(hm@yaxes[[i]], "IheatmapMainY")
+    col_px <- if (show_col_labels) 28L else 16L
+    body_h <- max(200L, n_genes * row_px)
+    body_w <- max(200L, n_samples * col_px)
+    total_h <- min(body_h + 200L, 3000L)
+    total_w <- min(body_w + 250L, 1200L)
+    rescale_axes <- function(axes, total_px, main_class, ref_px = 700) {
+        n_ax <- length(axes)
+        if (n_ax < 2L) return(axes)
+        main_idx <- which(vapply(seq_along(axes), function(i) {
+            methods::is(axes[[i]], main_class)
         }, logical(1)))
-        if (length(main_idx) == 1L) {
-            orig_domains <- lapply(seq_along(hm@yaxes), function(i) {
-                list(start = hm@yaxes[[i]]@domain_start,
-                     end   = hm@yaxes[[i]]@domain_end)
-            })
-            above <- which(vapply(seq_along(hm@yaxes), function(i) {
-                orig_domains[[i]]$start >= orig_domains[[main_idx]]$end
-            }, logical(1)))
-            below <- which(vapply(seq_along(hm@yaxes), function(i) {
-                orig_domains[[i]]$end <= orig_domains[[main_idx]]$start
-            }, logical(1)))
-            above_px <- 0
-            for (i in above) {
-                span <- orig_domains[[i]]$end - orig_domains[[i]]$start
-                above_px <- above_px + span * 700 + gap * 700
+        if (length(main_idx) != 1L) return(axes)
+        gap <- 0.004
+        orig <- lapply(seq_along(axes), function(i) {
+            list(s = axes[[i]]@domain_start, e = axes[[i]]@domain_end)
+        })
+        above <- which(vapply(seq_along(axes), function(i) {
+            orig[[i]]$s >= orig[[main_idx]]$e
+        }, logical(1)))
+        below <- which(vapply(seq_along(axes), function(i) {
+            orig[[i]]$e <= orig[[main_idx]]$s
+        }, logical(1)))
+        sum_px <- function(idx) {
+            px <- 0
+            for (i in idx) {
+                px <- px + (orig[[i]]$e - orig[[i]]$s + gap) * ref_px
             }
-            if (above_px < 40) above_px <- 80
-            below_px <- 0
-            for (i in below) {
-                span <- orig_domains[[i]]$end - orig_domains[[i]]$start
-                below_px <- below_px + span * 700 + gap * 700
-            }
-            if (below_px > 0 && below_px < 30) below_px <- 60
-            above_frac <- above_px / total_px
-            below_frac <- below_px / total_px
-            body_frac <- 1 - above_frac - below_frac
-            if (body_frac < 0.3) {
-                body_frac <- 0.3
-                leftover <- 1 - body_frac
-                total_fixed <- above_frac + below_frac
-                if (total_fixed > 0) {
-                    above_frac <- leftover * above_frac / total_fixed
-                    below_frac <- leftover * below_frac / total_fixed
-                }
-            }
-            if (length(above) > 0L) {
-                above_ord <- above[order(vapply(above, function(i) {
-                    orig_domains[[i]]$start
-                }, numeric(1)))]
-                cursor <- 1 - above_frac
-                total_orig <- sum(vapply(above_ord, function(i) {
-                    orig_domains[[i]]$end - orig_domains[[i]]$start + gap
-                }, numeric(1)))
-                for (i in above_ord) {
-                    orig_span <- orig_domains[[i]]$end - orig_domains[[i]]$start + gap
-                    share <- if (total_orig > 0) orig_span / total_orig else 1 / length(above_ord)
-                    ax_size <- above_frac * share - gap
-                    if (ax_size < gap) ax_size <- gap
-                    hm@yaxes[[i]]@domain_start <- cursor + gap
-                    hm@yaxes[[i]]@domain_end <- cursor + gap + ax_size
-                    cursor <- cursor + gap + ax_size
-                }
-            }
-            hm@yaxes[[main_idx]]@domain_start <- below_frac
-            hm@yaxes[[main_idx]]@domain_end <- 1 - above_frac
-            if (length(below) > 0L) {
-                below_ord <- below[order(vapply(below, function(i) {
-                    orig_domains[[i]]$end
-                }, numeric(1)), decreasing = TRUE)]
-                cursor <- below_frac
-                total_orig <- sum(vapply(below_ord, function(i) {
-                    orig_domains[[i]]$end - orig_domains[[i]]$start + gap
-                }, numeric(1)))
-                for (i in below_ord) {
-                    orig_span <- orig_domains[[i]]$end - orig_domains[[i]]$start + gap
-                    share <- if (total_orig > 0) orig_span / total_orig else 1 / length(below_ord)
-                    ax_size <- below_frac * share - gap
-                    if (ax_size < gap) ax_size <- gap
-                    hm@yaxes[[i]]@domain_end <- cursor - gap
-                    hm@yaxes[[i]]@domain_start <- cursor - gap - ax_size
-                    cursor <- cursor - gap - ax_size
-                }
-            }
+            max(px, if (length(idx)) 40 else 0)
         }
+        above_frac <- sum_px(above) / total_px
+        below_frac <- sum_px(below) / total_px
+        body_frac <- 1 - above_frac - below_frac
+        if (body_frac < 0.3) {
+            body_frac <- 0.3
+            leftover <- 1 - body_frac
+            tot <- above_frac + below_frac
+            if (tot > 0) { above_frac <- leftover * above_frac / tot; below_frac <- leftover - above_frac }
+        }
+        distribute <- function(idx, budget, ascending) {
+            if (!length(idx)) return(axes)
+            ord <- idx[order(vapply(idx, function(i) orig[[i]]$s, numeric(1)),
+                decreasing = !ascending)]
+            total_orig <- sum(vapply(ord, function(i) orig[[i]]$e - orig[[i]]$s + gap, numeric(1)))
+            if (ascending) {
+                cursor <- 1 - budget
+                for (i in ord) {
+                    share <- if (total_orig > 0) (orig[[i]]$e - orig[[i]]$s + gap) / total_orig else 1 / length(ord)
+                    sz <- max(budget * share - gap, gap)
+                    axes[[i]]@domain_start <<- cursor + gap
+                    axes[[i]]@domain_end   <<- cursor + gap + sz
+                    cursor <- cursor + gap + sz
+                }
+            } else {
+                cursor <- budget
+                for (i in ord) {
+                    share <- if (total_orig > 0) (orig[[i]]$e - orig[[i]]$s + gap) / total_orig else 1 / length(ord)
+                    sz <- max(budget * share - gap, gap)
+                    axes[[i]]@domain_end   <<- cursor - gap
+                    axes[[i]]@domain_start <<- cursor - gap - sz
+                    cursor <- cursor - gap - sz
+                }
+            }
+            axes
+        }
+        axes <- distribute(above, above_frac, ascending = TRUE)
+        axes <- distribute(below, below_frac, ascending = FALSE)
+        axes[[main_idx]]@domain_start <- below_frac
+        axes[[main_idx]]@domain_end   <- 1 - above_frac
+        axes
     }
+    hm@yaxes@listData <- rescale_axes(hm@yaxes, total_h, "IheatmapMainY")@listData
+    hm@xaxes@listData <- rescale_axes(hm@xaxes, total_w, "IheatmapMainX")@listData
     ref_px <- 700
-    scale_factor <- ref_px / total_px
+    scale_factor <- ref_px / total_h
     hm@colorbar_grid@y_length  <- hm@colorbar_grid@y_length  * scale_factor
     hm@colorbar_grid@y_spacing <- hm@colorbar_grid@y_spacing * scale_factor
     hm
@@ -1183,12 +1172,20 @@ function (bundle)
         output$iheatmap_container <- shiny::renderUI({
             n_genes <- length(hm_selected_genes())
             show_rows <- isTRUE(input$hm_show_row_labels)
+            show_cols <- isTRUE(input$hm_show_col_labels)
             row_px <- if (show_rows) 18L else 8L
             heatmap_body_px <- max(200L, n_genes * row_px)
-            fixed_px <- 200L
-            total_px <- min(heatmap_body_px + fixed_px, 3000L)
+            fixed_y_px <- 200L
+            total_h <- min(heatmap_body_px + fixed_y_px, 3000L)
+            n_samples <- length(input$hm_samples)
+            if (!n_samples) n_samples <- nrow(bundle$sample_df)
+            col_px <- if (show_cols) 28L else 16L
+            heatmap_body_w <- max(200L, n_samples * col_px)
+            fixed_x_px <- 250L
+            total_w <- min(heatmap_body_w + fixed_x_px, 1200L)
             iheatmapr::iheatmaprOutput("iheatmap_plot",
-                height = paste0(total_px, "px"))
+                height = paste0(total_h, "px"),
+                width = paste0(total_w, "px"))
         })
         output$iheatmap_plot <- iheatmapr::renderIheatmap({
             d <- hm_data()
