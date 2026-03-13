@@ -1072,94 +1072,6 @@ function (bundle)
                 show_row_labels = input$hm_show_row_labels,
                 show_col_labels = input$hm_show_col_labels)
         })
-        hm_static_plot <- function(file, width, height, format) {
-            d <- hm_data()
-            shiny::req(d)
-            mat <- t(scale(t(d$lcpm)))
-            mat[!is.finite(mat)] <- 0
-            row_syms <- bundle$gene_df[rownames(mat), "symbol"]
-            row_syms <- ifelse(is_missing_string(row_syms), rownames(mat), row_syms)
-            rownames(mat) <- make.unique(row_syms)
-            colnames(mat) <- bundle$sample_df[colnames(mat), "sample_id"]
-            colors <- grDevices::colorRampPalette(
-                c("#2166ac", "#f7f7f7", "#b2182b"))(100)
-            do_cluster_rows <- "rows" %in% isolate(input$hm_cluster)
-            do_cluster_cols <- "columns" %in% isolate(input$hm_cluster)
-            annotation_col <- NULL
-            if (length(d$col_annotations)) {
-                annotation_col <- data.frame(d$col_annotations,
-                    row.names = colnames(mat),
-                    stringsAsFactors = FALSE, check.names = FALSE)
-            }
-            annotation_row <- NULL
-            if (length(d$row_geneset_flags)) {
-                annotation_row <- data.frame(d$row_geneset_flags,
-                    row.names = rownames(mat),
-                    stringsAsFactors = FALSE, check.names = FALSE)
-            }
-            ann_colors <- list()
-            for (nm in names(d$row_geneset_flags)) {
-                ann_colors[[nm]] <- c("In" = "#000000", "Out" = "#d9d9d9")
-            }
-            if (format == "pdf") {
-                grDevices::pdf(file, width = width, height = height)
-            } else {
-                grDevices::png(file, width = width, height = height,
-                    units = "in", res = 300)
-            }
-            pheatmap::pheatmap(mat, color = colors, scale = "none",
-                cluster_rows = do_cluster_rows,
-                cluster_cols = do_cluster_cols,
-                annotation_col = annotation_col,
-                annotation_row = annotation_row,
-                annotation_colors = ann_colors,
-                annotation_legend = length(d$row_geneset_flags) == 0L)
-            grDevices::dev.off()
-        }
-        shiny::observeEvent(input$hm_download_png, {
-            shiny::showModal(shiny::modalDialog(
-                title = "Download Heatmap as PNG",
-                shiny::numericInput("hm_png_width", "Width (inches)", 10, min = 4, max = 30),
-                shiny::numericInput("hm_png_height", "Height (inches)", 8, min = 4, max = 30),
-                footer = shiny::tagList(
-                    shiny::downloadButton("hm_do_download_png", "Download"),
-                    shiny::modalButton("Cancel")
-                )
-            ))
-        })
-        shiny::observeEvent(input$hm_download_pdf, {
-            shiny::showModal(shiny::modalDialog(
-                title = "Download Heatmap as PDF",
-                shiny::numericInput("hm_pdf_width", "Width (inches)", 10, min = 4, max = 30),
-                shiny::numericInput("hm_pdf_height", "Height (inches)", 8, min = 4, max = 30),
-                footer = shiny::tagList(
-                    shiny::downloadButton("hm_do_download_pdf", "Download"),
-                    shiny::modalButton("Cancel")
-                )
-            ))
-        })
-        output$hm_do_download_png <- shiny::downloadHandler(
-            filename = function() paste0("heatmap_", Sys.Date(), ".png"),
-            content = function(file) {
-                w <- input$hm_png_width
-                h <- input$hm_png_height
-                if (is.null(w) || !is.finite(w)) w <- 10
-                if (is.null(h) || !is.finite(h)) h <- 8
-                hm_static_plot(file, width = w, height = h, format = "png")
-                shiny::removeModal()
-            }
-        )
-        output$hm_do_download_pdf <- shiny::downloadHandler(
-            filename = function() paste0("heatmap_", Sys.Date(), ".pdf"),
-            content = function(file) {
-                w <- input$hm_pdf_width
-                h <- input$hm_pdf_height
-                if (is.null(w) || !is.finite(w)) w <- 10
-                if (is.null(h) || !is.finite(h)) h <- 8
-                hm_static_plot(file, width = w, height = h, format = "pdf")
-                shiny::removeModal()
-            }
-        )
     }
 }
 deexplorer_styles <-
@@ -1469,13 +1381,7 @@ function ()
                 choices = NULL, multiple = TRUE,
                 options = list(
                     placeholder = "Type a gene set name",
-                    respect_word_boundaries = FALSE)),
-            shiny::hr(),
-            shiny::h4("Download"),
-            shiny::actionButton("hm_download_png", "Download PNG",
-                class = "btn-outline-primary", style = "width: 100%; margin-bottom: 6px;"),
-            shiny::actionButton("hm_download_pdf", "Download PDF",
-                class = "btn-outline-primary", style = "width: 100%;"))),
+                    respect_word_boundaries = FALSE))),
         shiny::column(width = 9,
             shiny::div(class = "deexplorer-card",
                 iheatmapr::iheatmaprOutput("iheatmap_plot",
