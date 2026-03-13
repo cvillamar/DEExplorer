@@ -711,11 +711,12 @@ function (bundle)
             state$hover_gene_key <- NULL
         })
         output$pca_plot <- plotly::renderPlotly({
-            build_pca_plot(bundle = bundle, x_pc = input$pca_x_pc, 
-                y_pc = input$pca_y_pc, color_col = selected_choice(input$pca_color), 
-                shape_col = selected_choice(input$pca_shape), 
+            build_pca_plot(bundle = bundle, x_pc = input$pca_x_pc,
+                y_pc = input$pca_y_pc, color_col = selected_choice(input$pca_color),
+                shape_col = selected_choice(input$pca_shape),
                 size_col = selected_choice(input$pca_size))
-        })
+        }) |> shiny::bindCache(input$pca_x_pc, input$pca_y_pc,
+            input$pca_color, input$pca_shape, input$pca_size)
         output$pca_variance_plot <- plotly::renderPlotly({
             build_pca_variance_plot(bundle)
         })
@@ -804,36 +805,38 @@ function (bundle)
             de_df <- current_de_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No differential expression rows are available for this contrast."))
             contrast_row <- current_contrast_row()
-            shiny::validate(shiny::need(nrow(contrast_row) > 0L, 
+            shiny::validate(shiny::need(nrow(contrast_row) > 0L,
                 "Select a valid contrast to draw the MA plot."))
-            plotly::layout(build_de_plot(de_df = de_df, x_col = "AveExpr", 
-                y_col = "logFC", title = paste0("MA plot: ", 
-                  first_or(contrast_row$contrast, "Unknown contrast")), source_id = "ma_plot", 
-                highlighted_gene_keys = selected_geneset_keys(), 
-                manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(), 
-                active_gene_key = state$active_gene_key, x_title = "AveExpr", 
-                y_title = "logFC"), shapes = list(list(type = "line", 
-                x0 = min(de_df$AveExpr, na.rm = TRUE), x1 = max(de_df$AveExpr, 
-                  na.rm = TRUE), y0 = 0, y1 = 0, line = list(color = "#555555", 
+            plotly::layout(build_de_plot(de_df = de_df, x_col = "AveExpr",
+                y_col = "logFC", title = paste0("MA plot: ",
+                  first_or(contrast_row$contrast, "Unknown contrast")), source_id = "ma_plot",
+                highlighted_gene_keys = selected_geneset_keys(),
+                manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(),
+                active_gene_key = state$active_gene_key, x_title = "AveExpr",
+                y_title = "logFC"), shapes = list(list(type = "line",
+                x0 = min(de_df$AveExpr, na.rm = TRUE), x1 = max(de_df$AveExpr,
+                  na.rm = TRUE), y0 = 0, y1 = 0, line = list(color = "#555555",
                   dash = "dash"))))
-        })
+        }) |> shiny::bindCache(input$contrast_key, input$geneset_name,
+            input$manual_genes, state$active_gene_key)
         output$volcano_plot <- plotly::renderPlotly({
             de_df <- current_de_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No differential expression rows are available for this contrast."))
             contrast_row <- current_contrast_row()
-            shiny::validate(shiny::need(nrow(contrast_row) > 0L, 
+            shiny::validate(shiny::need(nrow(contrast_row) > 0L,
                 "Select a valid contrast to draw the volcano plot."))
-            plotly::layout(build_de_plot(de_df = de_df, x_col = "logFC", 
-                y_col = "neg_log10_p", title = paste0("Volcano plot: ", 
-                  first_or(contrast_row$contrast, "Unknown contrast")), source_id = "volcano_plot", 
-                highlighted_gene_keys = selected_geneset_keys(), 
-                manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(), 
-                active_gene_key = state$active_gene_key, x_title = "logFC", 
-                y_title = "-log10(P.Value)"), shapes = list(list(type = "line", 
-                x0 = 0, x1 = 0, y0 = 0, y1 = max(de_df$neg_log10_p, 
-                  na.rm = TRUE), line = list(color = "#555555", 
+            plotly::layout(build_de_plot(de_df = de_df, x_col = "logFC",
+                y_col = "neg_log10_p", title = paste0("Volcano plot: ",
+                  first_or(contrast_row$contrast, "Unknown contrast")), source_id = "volcano_plot",
+                highlighted_gene_keys = selected_geneset_keys(),
+                manual_gene_keys = manual_gene_keys(), leading_edge_keys = leading_edge_keys(),
+                active_gene_key = state$active_gene_key, x_title = "logFC",
+                y_title = "-log10(P.Value)"), shapes = list(list(type = "line",
+                x0 = 0, x1 = 0, y0 = 0, y1 = max(de_df$neg_log10_p,
+                  na.rm = TRUE), line = list(color = "#555555",
                   dash = "dash"))))
-        })
+        }) |> shiny::bindCache(input$contrast_key, input$geneset_name,
+            input$manual_genes, state$active_gene_key)
         active_gene_row <- shiny::reactive({
             de_df <- current_de_table()
             if (is.null(state$active_gene_key) || !length(state$active_gene_key) || 
@@ -864,13 +867,14 @@ function (bundle)
         })
         output$gene_boxplot <- plotly::renderPlotly({
             gene_row <- focused_gene_row()
-            shiny::validate(shiny::need(nrow(gene_row) == 1L, 
+            shiny::validate(shiny::need(nrow(gene_row) == 1L,
                 "Hover or select a gene to show the per-sample log-CPM distribution."))
-            gene_expr_df <- prepare_gene_expression_df(bundle, 
+            gene_expr_df <- prepare_gene_expression_df(bundle,
                 gene_row$gene_key[[1L]], input$gene_box_group)
             build_gene_boxplot(gene_expr_df, gene_row$display_symbol[[1L]],
                 input$gene_box_group)
-        })
+        }) |> shiny::bindCache(state$hover_gene_key, state$active_gene_key,
+            input$gene_box_group)
         active_ensembl_id <- shiny::reactive({
             gene_row <- active_gene_row()
             if (!nrow(gene_row)) return(NULL)
@@ -1073,7 +1077,9 @@ function (bundle)
                 cluster_cols = cluster_cols,
                 show_row_labels = input$hm_show_row_labels,
                 show_col_labels = input$hm_show_col_labels)
-        })
+        }) |> shiny::bindCache(input$hm_contrast, input$hm_top_n,
+            input$hm_samples, input$hm_col_ann, input$hm_row_genesets,
+            input$hm_cluster, input$hm_show_row_labels, input$hm_show_col_labels)
     }
 }
 deexplorer_styles <-
