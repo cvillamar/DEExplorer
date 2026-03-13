@@ -1090,6 +1090,14 @@ function (bundle)
                 col_annotations = col_annotations,
                 row_geneset_flags = row_geneset_flags)
         })
+        output$iheatmap_container <- shiny::renderUI({
+            n_genes <- length(hm_selected_genes())
+            show_rows <- isTRUE(input$hm_show_row_labels)
+            px <- if (show_rows) max(400L, n_genes * 18L) else max(400L, n_genes * 8L)
+            px <- min(px, 3000L)
+            iheatmapr::iheatmaprOutput("iheatmap_plot",
+                height = paste0(px, "px"))
+        })
         output$iheatmap_plot <- iheatmapr::renderIheatmap({
             d <- hm_data()
             shiny::req(d)
@@ -1424,8 +1432,7 @@ function ()
                     respect_word_boundaries = FALSE)))),
         shiny::column(width = 9,
             shiny::div(class = "deexplorer-card",
-                iheatmapr::iheatmaprOutput("iheatmap_plot",
-                    height = "700px")))))
+                shiny::uiOutput("iheatmap_container")))))
 }
 infer_fit_method <-
 function (fit) 
