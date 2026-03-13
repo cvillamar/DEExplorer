@@ -577,6 +577,7 @@ function (bundle)
                 key, , drop = FALSE]
         })
         current_de_table <- shiny::reactive({
+            shiny::req(input$main_tabs == "Explore DEG results")
             key <- input$contrast_key
             shiny::req(!is.null(key), nzchar(key))
             de_df <- bundle$de_tables[[key]]
@@ -990,6 +991,7 @@ function (bundle)
         shiny::updateCheckboxGroupInput(session, "hm_col_ann",
             choices = hm_col_ann_choices)
         hm_selected_genes <- shiny::reactive({
+            shiny::req(input$main_tabs == "Heatmap maker")
             contrast_key <- input$hm_contrast
             shiny::req(contrast_key, nzchar(contrast_key))
             de_df <- bundle$de_tables[[contrast_key]]
