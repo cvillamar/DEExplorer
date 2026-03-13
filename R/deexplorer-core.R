@@ -342,6 +342,10 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
             }
         }
     }
+    ref_px <- 700
+    scale_factor <- ref_px / total_px
+    hm@colorbar_grid@y_length  <- hm@colorbar_grid@y_length  * scale_factor
+    hm@colorbar_grid@y_spacing <- hm@colorbar_grid@y_spacing * scale_factor
     hm
 }
 build_method_label <-
