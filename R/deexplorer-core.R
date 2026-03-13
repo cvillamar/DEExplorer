@@ -1381,7 +1381,7 @@ function ()
                 choices = NULL, multiple = TRUE,
                 options = list(
                     placeholder = "Type a gene set name",
-                    respect_word_boundaries = FALSE))),
+                    respect_word_boundaries = FALSE)))),
         shiny::column(width = 9,
             shiny::div(class = "deexplorer-card",
                 iheatmapr::iheatmaprOutput("iheatmap_plot",
