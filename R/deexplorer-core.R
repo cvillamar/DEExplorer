@@ -1016,6 +1016,14 @@ function (bundle)
             choices = hm_col_ann_choices)
         hm_selected_genes <- shiny::reactive({
             shiny::req(input$main_tabs == "Heatmap maker")
+            manual_ids <- parse_multiline_gene_input(input$hm_manual_genes)
+            if (length(manual_ids)) {
+                keys <- resolve_gene_keys(manual_ids, bundle$gene_lookup)
+                keys <- intersect(keys, rownames(bundle$lcpm))
+                shiny::validate(shiny::need(length(keys) >= 2L,
+                    "None of the entered genes were found. Try gene symbols (e.g. TP53) or Ensembl IDs."))
+                return(keys)
+            }
             contrast_key <- input$hm_contrast
             shiny::req(contrast_key, nzchar(contrast_key))
             de_df <- bundle$de_tables[[contrast_key]]
@@ -1098,8 +1106,9 @@ function (bundle)
                 show_row_labels = input$hm_show_row_labels,
                 show_col_labels = input$hm_show_col_labels)
         }) |> shiny::bindCache(input$hm_contrast, input$hm_top_n,
-            input$hm_samples, input$hm_col_ann, input$hm_row_genesets,
-            input$hm_cluster, input$hm_show_row_labels, input$hm_show_col_labels)
+            input$hm_manual_genes, input$hm_samples, input$hm_col_ann,
+            input$hm_row_genesets, input$hm_cluster,
+            input$hm_show_row_labels, input$hm_show_col_labels)
     }
 }
 deexplorer_styles <-
@@ -1387,6 +1396,9 @@ function ()
             shiny::selectInput("hm_contrast", "Contrast", choices = character()),
             shiny::sliderInput("hm_top_n", "Top up/down genes",
                 min = 10, max = 100, value = 20, step = 5),
+            shiny::textAreaInput("hm_manual_genes", "Custom gene list (one per line)",
+                value = "", rows = 4,
+                placeholder = "Leave empty to use top up/down genes"),
             shiny::checkboxGroupInput("hm_cluster", "Clustering",
                 choices = c("Rows" = "rows", "Columns" = "columns"),
                 inline = TRUE),
