@@ -224,22 +224,31 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
     row_syms <- ifelse(is_missing_string(row_syms), rownames(mat), row_syms)
     rownames(mat) <- make.unique(row_syms)
     colnames(mat) <- sample_df[colnames(mat), "sample_id"]
+    left_margin <- 20L
+    if (!is.null(col_annotations) && length(col_annotations)) {
+        max_chars <- max(nchar(names(col_annotations)))
+        left_margin <- max(20L, as.integer(max_chars * 8 + 10))
+    }
+    bottom_margin <- 20L
+    if (!is.null(row_geneset_flags) && length(row_geneset_flags)) {
+        gs_titles <- sub("^HALLMARK_", "", names(row_geneset_flags))
+        gs_titles <- gsub("_", " ", gs_titles)
+        max_gs_chars <- max(nchar(gs_titles))
+        bottom_margin <- max(20L, as.integer(max_gs_chars * 6 + 10))
+    }
     hm <- iheatmapr::iheatmap(mat, name = "Z-score",
         cluster_rows = cluster_rows, cluster_cols = cluster_cols,
         colors = grDevices::colorRampPalette(
             c("#2166ac", "#f7f7f7", "#b2182b"))(100),
-        layout = list(margin = list(l = 20, b = 20)))
-    if (show_row_labels) {
-        hm <- iheatmapr::add_row_labels(hm, side = "right")
-    }
-    if (show_col_labels) {
-        hm <- iheatmapr::add_col_labels(hm, side = "bottom")
-    }
+        layout = list(margin = list(l = left_margin, b = bottom_margin)))
     if (!is.null(col_annotations) && length(col_annotations)) {
         col_ann_df <- as.data.frame(col_annotations,
             stringsAsFactors = FALSE, check.names = FALSE)
         hm <- iheatmapr::add_col_annotation(hm,
             annotation = col_ann_df, side = "bottom")
+    }
+    if (show_col_labels) {
+        hm <- iheatmapr::add_col_labels(hm, side = "bottom")
     }
     if (!is.null(row_geneset_flags) && length(row_geneset_flags)) {
         gs_names <- names(row_geneset_flags)
@@ -255,6 +264,9 @@ function (lcpm_matrix, gene_df, sample_df, col_annotations = NULL,
                 side = "right",
                 pname = paste0("gs_", i))
         }
+    }
+    if (show_row_labels) {
+        hm <- iheatmapr::add_row_labels(hm, side = "right")
     }
     n_genes <- nrow(mat)
     n_samples <- ncol(mat)
