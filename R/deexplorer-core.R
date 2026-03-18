@@ -878,21 +878,53 @@ function (bundle)
         output$de_table <- DT::renderDT({
             de_df <- filtered_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No genes match the current table filter."))
-            display_df <- de_df[, c("gene_key", "display_symbol", 
-                "gene_id", "logFC", "AveExpr", "t", "P.Value", 
+            display_df <- de_df[, c("gene_key", "display_symbol",
+                "gene_id", "logFC", "AveExpr", "t", "P.Value",
                 "adj.P.Val", "B", "feature_name")]
-            colnames(display_df) <- c("gene_key", "Symbol", "Gene ID", 
-                "logFC", "AveExpr", "t", "P.Value", "adj.P.Val", 
+            colnames(display_df) <- c("gene_key", "Symbol", "Gene ID",
+                "logFC", "AveExpr", "t", "P.Value", "adj.P.Val",
                 "B", "Feature")
-            DT::formatSignif(DT::formatRound(DT::datatable(display_df, 
-                filter = "top", selection = "single", rownames = FALSE, 
-                options = list(pageLength = 15, scrollX = TRUE, 
-                  columnDefs = list(list(targets = 0, visible = FALSE))), 
-                callback = DT::JS(sprintf("table.on('mouseenter', 'tbody tr', function() {\n               var data = table.row(this).data();\n               if (data) { Shiny.setInputValue('%s', data[0], {priority: 'event'}); }\n             });", 
-                  "de_table_hover"))), columns = c("logFC", "AveExpr", 
-                "t", "B"), digits = 3), columns = c("P.Value", 
-                "adj.P.Val"), digits = 3)
+            round3_render <- DT::JS(
+                "function(data, type) {",
+                "  if (type === 'display' && data !== null) return parseFloat(data).toFixed(3);",
+                "  return data;",
+                "}")
+            sig3_render <- DT::JS(
+                "function(data, type) {",
+                "  if (type === 'display' && data !== null) return parseFloat(data).toPrecision(3);",
+                "  return data;",
+                "}")
+            DT::datatable(display_df,
+                filter = "top", selection = "single", rownames = FALSE,
+                options = list(pageLength = 15, scrollX = TRUE,
+                    columnDefs = list(
+                        list(targets = 0, visible = FALSE),
+                        list(targets = c(3, 4, 5, 8), render = round3_render),
+                        list(targets = c(6, 7), render = sig3_render)
+                    )),
+                callback = DT::JS(sprintf("table.on('mouseenter', 'tbody tr', function() {\n               var data = table.row(this).data();\n               if (data) { Shiny.setInputValue('%s', data[0], {priority: 'event'}); }\n             });",
+                    "de_table_hover")))
         })
+        output$download_de_table <- shiny::downloadHandler(
+            filename = function() {
+                contrast_row <- current_contrast_row()
+                label <- if (nrow(contrast_row)) gsub("[^A-Za-z0-9_.-]", "_",
+                    contrast_row$contrast[[1L]]) else "table"
+                paste0("DE_", label, "_", Sys.Date(), ".csv")
+            },
+            content = function(file) {
+                de_df <- filtered_table()
+                if (!nrow(de_df)) return(invisible(NULL))
+                out_df <- de_df[, c("display_symbol", "gene_id", "logFC",
+                    "AveExpr", "t", "P.Value", "adj.P.Val", "B",
+                    "feature_name"), drop = FALSE]
+                colnames(out_df) <- c("Symbol", "Gene_ID", "logFC",
+                    "AveExpr", "t", "P.Value", "adj.P.Val", "B", "Feature")
+                rows_order <- input$de_table_rows_all
+                if (length(rows_order)) out_df <- out_df[rows_order, , drop = FALSE]
+                utils::write.csv(out_df, file, row.names = FALSE)
+            }
+        )
         output$ma_plot <- plotly::renderPlotly({
             de_df <- current_de_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No differential expression rows are available for this contrast."))
@@ -1299,7 +1331,10 @@ function ()
             shiny::column(width = 6, shiny::div(class = "deexplorer-card",
                 plotly::plotlyOutput("volcano_plot", height = "410px")))),
         shiny::fluidRow(shiny::column(width = 7, shiny::div(class = "deexplorer-card",
-            shiny::h4("Ranked Differential Expression Table"),
+            shiny::div(style = "display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;",
+                shiny::h4("Ranked Differential Expression Table", style = "margin: 0;"),
+                shiny::downloadButton("download_de_table", "Download CSV",
+                    class = "btn-sm btn-outline-primary")),
             DT::DTOutput("de_table"))), shiny::column(width = 5,
             shiny::div(class = "deexplorer-card no-spinner", shiny::uiOutput("selected_gene_summary")),
             shiny::div(class = "deexplorer-card no-spinner", plotly::plotlyOutput("gene_boxplot",
