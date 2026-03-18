@@ -875,7 +875,7 @@ function (bundle)
             }
             build_fgsea_barplot(fgsea_df)
         })
-        output$de_table <- DT::renderDT({
+        output$de_table <- DT::renderDT(server = FALSE, {
             de_df <- filtered_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No genes match the current table filter."))
             display_df <- de_df[, c("gene_key", "display_symbol",
