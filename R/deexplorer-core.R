@@ -884,7 +884,7 @@ function (bundle)
             }
             build_fgsea_barplot(fgsea_df)
         })
-        output$de_table <- DT::renderDT(server = FALSE, {
+        output$de_table <- DT::renderDT({
             de_df <- filtered_table()
             shiny::validate(shiny::need(nrow(de_df) > 0L, "No genes match the current table filter."))
             display_df <- de_df[, c("gene_key", "display_symbol",
@@ -904,7 +904,14 @@ function (bundle)
                 options = list(pageLength = 15, scrollX = TRUE,
                     columnDefs = list(
                         list(targets = 0, visible = FALSE)
-                    )),
+                    ),
+                    drawCallback = DT::JS("function(settings) {
+                        var $tbl = $(this.api().table().container());
+                        $tbl.find('.slider').each(function() {
+                            var sliders = $(this).find('.noUi-target');
+                            if (sliders.length > 1) sliders.slice(1).remove();
+                        });
+                    }")),
                 callback = DT::JS(sprintf("table.on('mouseenter', 'tbody tr', function() {\n               var data = table.row(this).data();\n               if (data) { Shiny.setInputValue('%s', data[0], {priority: 'event'}); }\n             });",
                     "de_table_hover")))
         })
