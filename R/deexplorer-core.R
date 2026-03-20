@@ -1173,10 +1173,16 @@ function (bundle)
             de_df <- bundle$de_tables[[contrast_key]]
             shiny::req(!is.null(de_df) && nrow(de_df) > 0L)
             top_n <- input$hm_top_n
-            sorted <- de_df[order(de_df$logFC, decreasing = TRUE), , drop = FALSE]
-            top_up <- utils::head(sorted, top_n)
-            top_down <- utils::tail(sorted, top_n)
-            unique(c(top_up$gene_key, top_down$gene_key))
+            rank_by <- input$hm_rank_by
+            if (identical(rank_by, "adj.P.Val")) {
+                sorted <- de_df[order(de_df$adj.P.Val), , drop = FALSE]
+                unique(utils::head(sorted, top_n * 2L)$gene_key)
+            } else {
+                sorted <- de_df[order(de_df$logFC, decreasing = TRUE), , drop = FALSE]
+                top_up <- utils::head(sorted, top_n)
+                top_down <- utils::tail(sorted, top_n)
+                unique(c(top_up$gene_key, top_down$gene_key))
+            }
         })
         shiny::observe({
             selected_genes <- hm_selected_genes()
@@ -1267,8 +1273,9 @@ function (bundle)
                 cluster_cols = cluster_cols,
                 show_row_labels = input$hm_show_row_labels,
                 show_col_labels = input$hm_show_col_labels)
-        }) |> shiny::bindCache(input$hm_contrast, input$hm_top_n,
-            input$hm_manual_genes, input$hm_samples, input$hm_col_ann,
+        }) |> shiny::bindCache(input$hm_contrast, input$hm_rank_by,
+            input$hm_top_n, input$hm_manual_genes,
+            input$hm_samples, input$hm_col_ann,
             input$hm_row_genesets, input$hm_cluster,
             input$hm_show_row_labels, input$hm_show_col_labels)
     }
@@ -1569,6 +1576,9 @@ function ()
     shiny::tabPanel(title = "Heatmap maker", shiny::fluidRow(shiny::column(width = 3,
         shiny::div(class = "deexplorer-sidebar", shiny::h4("Heatmap Settings"),
             shiny::selectInput("hm_contrast", "Contrast", choices = character()),
+            shiny::radioButtons("hm_rank_by", "Rank genes by",
+                choices = c("logFC" = "logFC", "adj. P-value" = "adj.P.Val"),
+                selected = "logFC", inline = TRUE),
             shiny::sliderInput("hm_top_n", "Top up/down genes",
                 min = 10, max = 100, value = 20, step = 5),
             shiny::textAreaInput("hm_manual_genes", "Custom gene list (one per line)",
