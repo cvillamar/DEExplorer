@@ -893,23 +893,17 @@ function (bundle)
             colnames(display_df) <- c("gene_key", "Symbol", "Gene ID",
                 "logFC", "AveExpr", "t", "P.Value", "adj.P.Val",
                 "B", "Feature")
-            round3_render <- DT::JS(
-                "function(data, type) {",
-                "  if (type === 'display' && data !== null) return parseFloat(data).toFixed(3);",
-                "  return data;",
-                "}")
-            sig3_render <- DT::JS(
-                "function(data, type) {",
-                "  if (type === 'display' && data !== null) return parseFloat(data).toPrecision(3);",
-                "  return data;",
-                "}")
+            display_df$logFC   <- round(display_df$logFC, 3)
+            display_df$AveExpr <- round(display_df$AveExpr, 3)
+            display_df$t       <- round(display_df$t, 3)
+            display_df$B       <- round(display_df$B, 3)
+            display_df$P.Value    <- signif(display_df$P.Value, 3)
+            display_df$adj.P.Val  <- signif(display_df$adj.P.Val, 3)
             DT::datatable(display_df,
                 filter = "top", selection = "single", rownames = FALSE,
                 options = list(pageLength = 15, scrollX = TRUE,
                     columnDefs = list(
-                        list(targets = 0, visible = FALSE),
-                        list(targets = c(3, 4, 5, 8), render = round3_render),
-                        list(targets = c(6, 7), render = sig3_render)
+                        list(targets = 0, visible = FALSE)
                     )),
                 callback = DT::JS(sprintf("table.on('mouseenter', 'tbody tr', function() {\n               var data = table.row(this).data();\n               if (data) { Shiny.setInputValue('%s', data[0], {priority: 'event'}); }\n             });",
                     "de_table_hover")))
