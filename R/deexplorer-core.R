@@ -376,6 +376,14 @@ function (lcpm, sample_df)
         variance_explained = variance_explained, stringsAsFactors = FALSE)
     list(scores = score_df, variance = variance_df)
 }
+pc_axis_label <-
+function (pc_name, variance_df)
+{
+    idx <- match(pc_name, variance_df$pc)
+    if (is.na(idx)) return(pc_name)
+    pct <- round(variance_df$variance_explained[idx] * 100, 1)
+    paste0(pc_name, " (", pct, "%)")
+}
 build_pca_plot <-
 function (bundle, x_pc, y_pc, color_col = NULL, shape_col = NULL, 
     size_col = NULL) 
@@ -400,8 +408,9 @@ function (bundle, x_pc, y_pc, color_col = NULL, shape_col = NULL,
         size = scale_marker_size(size_values), symbol = scale_marker_symbol(shape_values), 
         opacity = 0.88, line = list(color = "#ffffff", width = 1), 
         sizemode = "diameter")), 
-        title = list(text = paste0("Sample PCA: ", x_pc, " vs ", 
-            y_pc)), xaxis = list(title = x_pc), yaxis = list(title = y_pc), 
+        title = list(text = paste0("Sample PCA: ", x_pc, " vs ",
+            y_pc)), xaxis = list(title = pc_axis_label(x_pc, bundle$pca_variance)),
+        yaxis = list(title = pc_axis_label(y_pc, bundle$pca_variance)),
         dragmode = "select", showlegend = FALSE)
 }
 build_pca_variance_plot <-
