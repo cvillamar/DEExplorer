@@ -900,18 +900,12 @@ function (bundle)
             display_df$P.Value    <- signif(display_df$P.Value, 3)
             display_df$adj.P.Val  <- signif(display_df$adj.P.Val, 3)
             DT::datatable(display_df,
-                filter = "top", selection = "single", rownames = FALSE,
+                filter = list(position = "top", clear = TRUE, plain = TRUE),
+                selection = "single", rownames = FALSE,
                 options = list(pageLength = 15, scrollX = TRUE,
                     columnDefs = list(
                         list(targets = 0, visible = FALSE)
-                    ),
-                    drawCallback = DT::JS("function(settings) {
-                        var $tbl = $(this.api().table().container());
-                        $tbl.find('.slider').each(function() {
-                            var sliders = $(this).find('.noUi-target');
-                            if (sliders.length > 1) sliders.slice(1).remove();
-                        });
-                    }")),
+                    )),
                 callback = DT::JS(sprintf("table.on('mouseenter', 'tbody tr', function() {\n               var data = table.row(this).data();\n               if (data) { Shiny.setInputValue('%s', data[0], {priority: 'event'}); }\n             });",
                     "de_table_hover")))
         })
