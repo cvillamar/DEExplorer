@@ -900,9 +900,10 @@ function (bundle)
             display_df$P.Value    <- signif(display_df$P.Value, 3)
             display_df$adj.P.Val  <- signif(display_df$adj.P.Val, 3)
             DT::datatable(display_df,
-                filter = list(position = "top", clear = TRUE, plain = TRUE),
+                filter = "none",
                 selection = "single", rownames = FALSE,
                 options = list(pageLength = 15, scrollX = TRUE,
+                    search = list(regex = FALSE, smart = TRUE),
                     columnDefs = list(
                         list(targets = 0, visible = FALSE)
                     )),
